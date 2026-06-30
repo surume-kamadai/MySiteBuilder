@@ -1,0 +1,14 @@
+# .NET / C# のビルド成果物を除外
+bin/
+obj/
+
+# IDE（Visual Studio / VSCode）の設定ファイルを除外
+.vs/
+.vscode/
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS固有のゴミファイルを除外
+.DS_Store
+Thumbs.db

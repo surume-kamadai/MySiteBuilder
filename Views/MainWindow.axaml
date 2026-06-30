@@ -1,0 +1,17 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MySiteBuilder.ViewModels"
+        xmlns:local="using:MySiteBuilder.Controls"
+        x:Class="MySiteBuilder.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="My Site Builder"
+        Width="1000" Height="600">
+
+    <Grid ColumnDefinitions="250, *">
+        <StackPanel Grid.Column="0" Background="#2D2D30">
+            <TextBlock Text="Inspector" Foreground="White" Margin="10,10,10,20" FontWeight="Bold"/>
+            </StackPanel>
+
+        <local:MyCanvasControl Grid.Column="1" Nodes="{Binding Nodes}" />
+    </Grid>
+</Window>
