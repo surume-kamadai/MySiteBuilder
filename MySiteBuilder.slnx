@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/Core/">
+    <Project Path="Core/MySiteBuilder.Core.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/MySiteBuilder.Tests.csproj" />
+  </Folder>
+  <Project Path="MySiteBuilder.csproj" />
+</Solution>

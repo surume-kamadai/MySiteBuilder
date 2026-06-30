@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    MySiteBuilder.Core - Electron版 Site Builder の中核ロジック移植先（Phase 1）
+    GUI（Avalonia）から完全に独立した純粋ロジック。
+      - Models  : project.js のデータモデル（プロジェクト/ページ/フォルダ/要素）
+      - Export  : renderer.js / exporter.js の HTML・Laravel Blade 出力エンジン
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>MySiteBuilder.Core</RootNamespace>
+    <AssemblyName>MySiteBuilder.Core</AssemblyName>
+  </PropertyGroup>
+
+</Project>

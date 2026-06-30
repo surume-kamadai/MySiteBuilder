@@ -7,6 +7,19 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
+  <!-- Core / Tests は独立した別プロジェクト。アプリ側のデフォルト glob から除外する。 -->
+  <ItemGroup>
+    <Compile Remove="Core/**/*.cs;Tests/**/*.cs" />
+    <AvaloniaXaml Remove="Core/**/*;Tests/**/*" />
+    <EmbeddedResource Remove="Core/**/*;Tests/**/*" />
+    <None Remove="Core/**/*;Tests/**/*" />
+  </ItemGroup>
+
+  <!-- 出力エンジン・データモデルは Core ライブラリを参照する。 -->
+  <ItemGroup>
+    <ProjectReference Include="Core/MySiteBuilder.Core.csproj" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.5" />
     <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />

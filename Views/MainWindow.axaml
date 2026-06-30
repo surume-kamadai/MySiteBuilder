@@ -5,13 +5,128 @@
         x:Class="MySiteBuilder.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="My Site Builder"
-        Width="1000" Height="600">
+        Width="1200" Height="760">
 
-    <Grid ColumnDefinitions="250, *">
-        <StackPanel Grid.Column="0" Background="#2D2D30">
-            <TextBlock Text="Inspector" Foreground="White" Margin="10,10,10,20" FontWeight="Bold"/>
+    <Grid RowDefinitions="Auto, *, Auto">
+
+        <!-- 上部ツールバー: ファイル操作・出力 -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#252528" Spacing="6">
+            <StackPanel.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Margin" Value="2"/>
+                    <Setter Property="Padding" Value="10,6"/>
+                </Style>
+            </StackPanel.Styles>
+            <Button Click="OnOpenClick">📂 開く</Button>
+            <Button Click="OnSaveClick">💾 保存</Button>
+            <Border Width="1" Background="#444" Margin="4,6"/>
+            <Button Click="OnExportStaticClick">🌐 静的サイト出力</Button>
+            <Button Click="OnExportLaravelClick">⚙️ Laravel出力</Button>
+        </StackPanel>
+
+        <!-- メイン: ツール / キャンバス / Inspector -->
+        <Grid Grid.Row="1" ColumnDefinitions="170, *, 300">
+
+            <!-- 左: 要素追加ツール -->
+            <StackPanel Grid.Column="0" Background="#2D2D30" Spacing="4">
+                <StackPanel.Styles>
+                    <Style Selector="Button">
+                        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                        <Setter Property="Margin" Value="8,2"/>
+                        <Setter Property="Padding" Value="10,7"/>
+                    </Style>
+                </StackPanel.Styles>
+                <TextBlock Text="ツール" Foreground="White" Margin="10,10,10,6" FontWeight="Bold"/>
+                <Button Tag="Label"     Click="OnAddClick">🅣 テキスト</Button>
+                <Button Tag="Button"    Click="OnAddClick">🔘 ボタン</Button>
+                <Button Tag="TextInput" Click="OnAddClick">⌨ 入力欄</Button>
+                <Button Tag="Image"     Click="OnAddClick">🖼 画像</Button>
+                <Button Tag="Rect"      Click="OnAddClick">▭ 四角</Button>
+                <Button Tag="Circle"    Click="OnAddClick">⬤ 丸</Button>
+                <Button Tag="Triangle"  Click="OnAddClick">▲ 三角</Button>
+                <Border Height="1" Background="#444" Margin="8,8"/>
+                <Button Click="OnDeleteClick" IsEnabled="{Binding HasSelection}">🗑 選択を削除</Button>
             </StackPanel>
 
-        <local:MyCanvasControl Grid.Column="1" Nodes="{Binding Nodes}" />
+            <!-- 中央: キャンバス -->
+            <ScrollViewer Grid.Column="1" Background="#3C3C40"
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                <Border Margin="30" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        BoxShadow="0 0 30 0 #60000000">
+                    <local:MyCanvasControl Editor="{Binding}"
+                                           Width="{Binding CanvasWidth}"
+                                           Height="{Binding CanvasHeight}"/>
+                </Border>
+            </ScrollViewer>
+
+            <!-- 右: Inspector -->
+            <ScrollViewer Grid.Column="2" Background="#2D2D30">
+                <StackPanel Margin="12" Spacing="6">
+                    <StackPanel.Styles>
+                        <Style Selector="TextBlock.label">
+                            <Setter Property="Foreground" Value="#BBBBBB"/>
+                            <Setter Property="Margin" Value="0,6,0,0"/>
+                        </Style>
+                        <Style Selector="TextBox">
+                            <Setter Property="Padding" Value="6,4"/>
+                        </Style>
+                    </StackPanel.Styles>
+
+                    <TextBlock Text="プロパティ" Foreground="White" FontWeight="Bold" FontSize="14"/>
+
+                    <StackPanel IsVisible="{Binding HasSelection}" Spacing="2">
+                        <TextBlock Classes="label" Text="種類"/>
+                        <TextBlock Text="{Binding SelType}" Foreground="White" FontWeight="Bold"/>
+
+                        <TextBlock Classes="label" Text="名前"/>
+                        <TextBox Text="{Binding SelName}"/>
+
+                        <TextBlock Classes="label" Text="テキスト / 画像URL"/>
+                        <TextBox Text="{Binding SelText}" AcceptsReturn="True" MaxHeight="80" TextWrapping="Wrap"/>
+
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,4,0,0">
+                            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,4,0">
+                                <TextBlock Classes="label" Text="X"/>
+                                <TextBox Text="{Binding SelX}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Row="0" Grid.Column="1" Margin="4,0,0,0">
+                                <TextBlock Classes="label" Text="Y"/>
+                                <TextBox Text="{Binding SelY}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,4,0">
+                                <TextBlock Classes="label" Text="幅"/>
+                                <TextBox Text="{Binding SelW}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="4,0,0,0">
+                                <TextBlock Classes="label" Text="高さ"/>
+                                <TextBox Text="{Binding SelH}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Classes="label" Text="背景色 (#hex)"/>
+                        <TextBox Text="{Binding SelBgColor}"/>
+
+                        <TextBlock Classes="label" Text="文字色 (#hex)"/>
+                        <TextBox Text="{Binding SelColor}"/>
+
+                        <TextBlock Classes="label" Text="文字サイズ"/>
+                        <TextBox Text="{Binding SelFontSize}"/>
+
+                        <TextBlock Classes="label" Text="リンク先 (route)"/>
+                        <TextBox Text="{Binding SelRoute}"/>
+                    </StackPanel>
+
+                    <TextBlock IsVisible="{Binding !HasSelection}"
+                               Text="要素を選択すると、ここで編集できます。"
+                               Foreground="#888888" TextWrapping="Wrap" Margin="0,8"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- 下部ステータスバー -->
+        <Border Grid.Row="2" Background="#007acc" Padding="10,5">
+            <TextBlock Text="{Binding StatusMessage}" Foreground="White"/>
+        </Border>
     </Grid>
 </Window>
