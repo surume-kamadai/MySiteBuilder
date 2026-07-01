@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using MySiteBuilder.Core.Models;
 using MySiteBuilder.ViewModels;
 
@@ -12,11 +15,16 @@ namespace MySiteBuilder.Controls;
 
 // ============================================================
 // 自前の編集キャンバス（Konva の代替）。
-//   - ViewModel の要素(SiteElement)を種類別に描画
-//   - クリックで選択、ドラッグで移動、Delete で削除
+//   - ViewModel の要素(SiteElement)を種類別に描画（画像は実ビットマップ）
+//   - クリックで選択、ドラッグで移動、四隅ハンドルでリサイズ、Delete で削除
 // ============================================================
 public class MyCanvasControl : Control
 {
+    private enum DragMode { None, Move, Resize }
+
+    private const double HandleHit = 7;   // ハンドルの当たり判定半径
+    private const double MinSize = 12;    // 最小サイズ
+
     public static readonly StyledProperty<MainWindowViewModel?> EditorProperty =
         AvaloniaProperty.Register<MyCanvasControl, MainWindowViewModel?>(nameof(Editor));
 
@@ -26,8 +34,16 @@ public class MyCanvasControl : Control
         set => SetValue(EditorProperty, value);
     }
 
-    private bool _dragging;
-    private Point _dragOffset;
+    private DragMode _mode;
+    private int _resizeCorner;       // 0=TL 1=TR 2=BL 3=BR
+    private Point _anchor;           // リサイズ時に固定する対角コーナー
+    private Point _dragStartPointer; // 移動開始時のポインタ位置
+    private readonly List<(SiteElement el, double x, double y)> _dragStarts = new(); // 移動開始時の各選択要素の位置
+    private bool _pushedThisDrag;    // このドラッグでUndoスナップショット済みか
+    private StandardCursorType _cursorType = StandardCursorType.Arrow;
+
+    // 画像のビットマップキャッシュ（data URL / ローカルパス → Bitmap）
+    private readonly Dictionary<string, Bitmap?> _imgCache = new();
 
     public MyCanvasControl()
     {
@@ -56,7 +72,6 @@ public class MyCanvasControl : Control
         base.Render(context);
 
         var vm = Editor;
-        // ページ背景
         var bg = vm != null ? CssColor.Brush(vm.PageBackground, Brushes.White) : Brushes.White;
         context.FillRectangle(bg, new Rect(Bounds.Size));
 
@@ -65,17 +80,21 @@ public class MyCanvasControl : Control
         foreach (var el in vm.Elements)
             RenderElement(context, el, 0, 0);
 
-        // 選択枠
-        if (vm.Selected is { } sel)
+        // 選択枠（複数選択は全てに枠、ハンドルはプライマリのみ）
+        foreach (var el in vm.Elements)
         {
-            var t = sel.Transform;
+            if (!vm.IsSelected(el)) continue;
+            var t = el.Transform;
             var rect = new Rect(t.X, t.Y, t.Width, t.Height);
-            var pen = new Pen(Brushes.OrangeRed, 2);
-            context.DrawRectangle(null, pen, rect);
-            DrawHandle(context, rect.TopLeft);
-            DrawHandle(context, rect.TopRight);
-            DrawHandle(context, rect.BottomLeft);
-            DrawHandle(context, rect.BottomRight);
+            bool primary = ReferenceEquals(el, vm.Selected);
+            context.DrawRectangle(null, new Pen(Brushes.OrangeRed, primary ? 2 : 1), rect);
+            if (primary)
+            {
+                DrawHandle(context, rect.TopLeft);
+                DrawHandle(context, rect.TopRight);
+                DrawHandle(context, rect.BottomLeft);
+                DrawHandle(context, rect.BottomRight);
+            }
         }
     }
 
@@ -131,8 +150,17 @@ public class MyCanvasControl : Control
 
             case "Image":
             {
-                ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#e8e8e8")), new Pen(Brushes.Gray, 1), rect);
-                DrawText(ctx, "🖼 " + (p.Name ?? "Image"), rect, 13, Brushes.DimGray, TextAlignment.Center, true);
+                var bmp = GetBitmap(p.Text);
+                if (bmp != null)
+                {
+                    var dest = ContainRect(rect, bmp.Size.Width, bmp.Size.Height);
+                    ctx.DrawImage(bmp, new Rect(bmp.Size), dest);
+                }
+                else
+                {
+                    ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#e8e8e8")), new Pen(Brushes.Gray, 1), rect);
+                    DrawText(ctx, "🖼 " + (p.Name ?? "Image"), rect, 13, Brushes.DimGray, TextAlignment.Center, true);
+                }
                 break;
             }
 
@@ -153,6 +181,48 @@ public class MyCanvasControl : Control
                 break;
             }
         }
+    }
+
+    // object-fit: contain 相当の収まりrectを計算
+    private static Rect ContainRect(Rect box, double bw, double bh)
+    {
+        if (bw <= 0 || bh <= 0) return box;
+        double scale = Math.Min(box.Width / bw, box.Height / bh);
+        double w = bw * scale, h = bh * scale;
+        return new Rect(box.X + (box.Width - w) / 2, box.Y + (box.Height - h) / 2, w, h);
+    }
+
+    private Bitmap? GetBitmap(string? src)
+    {
+        if (string.IsNullOrEmpty(src)) return null;
+        if (_imgCache.TryGetValue(src, out var cached)) return cached;
+
+        Bitmap? bmp = null;
+        try
+        {
+            if (src.StartsWith("data:image"))
+            {
+                int i = src.IndexOf("base64,", StringComparison.Ordinal);
+                if (i >= 0)
+                {
+                    var bytes = Convert.FromBase64String(src[(i + 7)..]);
+                    using var ms = new MemoryStream(bytes);
+                    bmp = new Bitmap(ms);
+                }
+            }
+            else if (File.Exists(src))
+            {
+                bmp = new Bitmap(src);
+            }
+            // http(s) は同期読込しない（プレースホルダ表示）
+        }
+        catch
+        {
+            bmp = null;
+        }
+
+        _imgCache[src] = bmp;
+        return bmp;
     }
 
     private static Geometry TriangleGeometry(Rect r)
@@ -182,7 +252,7 @@ public class MyCanvasControl : Control
     }
 
     // ============================================================
-    // 操作（選択・ドラッグ）
+    // 操作（選択・移動・リサイズ）
     // ============================================================
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -192,42 +262,104 @@ public class MyCanvasControl : Control
 
         Focus();
         var pos = e.GetPosition(this);
-        SiteElement? hit = null;
 
-        // 上に描かれている要素を優先（リスト末尾から）
+        // 選択中要素のハンドルを最優先でヒットテスト（リサイズ開始）
+        if (vm.Selected is { } cur)
+        {
+            var r = RectOf(cur);
+            int corner = HitHandle(pos, r);
+            if (corner >= 0)
+            {
+                _mode = DragMode.Resize;
+                _pushedThisDrag = false;
+                _resizeCorner = corner;
+                _anchor = corner switch
+                {
+                    0 => r.BottomRight,
+                    1 => r.BottomLeft,
+                    2 => r.TopRight,
+                    _ => r.TopLeft,
+                };
+                e.Pointer.Capture(this);
+                return;
+            }
+        }
+
+        // 要素の選択（上に描かれている要素を優先）
+        SiteElement? hit = null;
         for (int i = vm.Elements.Count - 1; i >= 0; i--)
         {
-            var t = vm.Elements[i].Transform;
-            if (new Rect(t.X, t.Y, t.Width, t.Height).Contains(pos)) { hit = vm.Elements[i]; break; }
+            if (RectOf(vm.Elements[i]).Contains(pos)) { hit = vm.Elements[i]; break; }
         }
 
-        vm.Select(hit);
+        bool additive = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
-        if (hit != null)
+        if (hit == null)
         {
-            _dragging = true;
-            _dragOffset = new Point(pos.X - hit.Transform.X, pos.Y - hit.Transform.Y);
-            e.Pointer.Capture(this);
+            if (!additive) vm.Select(null);
+            return;
         }
+
+        if (additive)
+        {
+            vm.ToggleSelect(hit);   // 追加選択（ドラッグはしない）
+            return;
+        }
+
+        // 通常クリック: 既に選択集合に含まれるならプライマリ切替（複数選択維持）、そうでなければ単一選択
+        if (vm.IsSelected(hit)) vm.SetPrimary(hit);
+        else vm.Select(hit);
+
+        // 選択集合まとめてドラッグ開始
+        _mode = DragMode.Move;
+        _pushedThisDrag = false;
+        _dragStartPointer = pos;
+        _dragStarts.Clear();
+        foreach (var s in vm.Selection) _dragStarts.Add((s, s.Transform.X, s.Transform.Y));
+        e.Pointer.Capture(this);
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
         var vm = Editor;
-        if (!_dragging || vm?.Selected is not { } sel) return;
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) { _dragging = false; return; }
-
         var pos = e.GetPosition(this);
-        sel.Transform.X = Math.Round(pos.X - _dragOffset.X);
-        sel.Transform.Y = Math.Round(pos.Y - _dragOffset.Y);
+
+        if (_mode == DragMode.None) { UpdateCursor(vm, pos); return; }
+        if (vm?.Selected is not { } sel) return;
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) { _mode = DragMode.None; return; }
+
+        // 実際に動かし始めた時点で一度だけUndoスナップショットを取る
+        if (!_pushedThisDrag) { vm.PushUndo(); _pushedThisDrag = true; }
+
+        if (_mode == DragMode.Move)
+        {
+            double dx = pos.X - _dragStartPointer.X;
+            double dy = pos.Y - _dragStartPointer.Y;
+            foreach (var (el, sx, sy) in _dragStarts)
+            {
+                el.Transform.X = Math.Round(sx + dx);
+                el.Transform.Y = Math.Round(sy + dy);
+            }
+        }
+        else // Resize（プライマリのみ）
+        {
+            double w = Math.Max(MinSize, Math.Abs(pos.X - _anchor.X));
+            double h = Math.Max(MinSize, Math.Abs(pos.Y - _anchor.Y));
+            double x = pos.X < _anchor.X ? _anchor.X - w : _anchor.X;
+            double y = pos.Y < _anchor.Y ? _anchor.Y - h : _anchor.Y;
+            sel.Transform.X = Math.Round(x);
+            sel.Transform.Y = Math.Round(y);
+            sel.Transform.Width = Math.Round(w);
+            sel.Transform.Height = Math.Round(h);
+        }
         vm.NotifyGeometryChanged();
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        _dragging = false;
+        _mode = DragMode.None;
         e.Pointer.Capture(null);
     }
 
@@ -238,6 +370,47 @@ public class MyCanvasControl : Control
         {
             Editor.DeleteSelected();
             e.Handled = true;
+        }
+    }
+
+    private static Rect RectOf(SiteElement el)
+    {
+        var t = el.Transform;
+        return new Rect(t.X, t.Y, t.Width, t.Height);
+    }
+
+    // pos が四隅ハンドルのどれかに当たればそのコーナー番号、無ければ -1
+    private static int HitHandle(Point pos, Rect r)
+    {
+        Point[] corners = { r.TopLeft, r.TopRight, r.BottomLeft, r.BottomRight };
+        for (int i = 0; i < corners.Length; i++)
+        {
+            if (Math.Abs(pos.X - corners[i].X) <= HandleHit && Math.Abs(pos.Y - corners[i].Y) <= HandleHit)
+                return i;
+        }
+        return -1;
+    }
+
+    private void UpdateCursor(MainWindowViewModel? vm, Point pos)
+    {
+        var type = StandardCursorType.Arrow;
+        if (vm?.Selected is { } sel)
+        {
+            var r = RectOf(sel);
+            int corner = HitHandle(pos, r);
+            type = corner switch
+            {
+                0 => StandardCursorType.TopLeftCorner,
+                1 => StandardCursorType.TopRightCorner,
+                2 => StandardCursorType.BottomLeftCorner,
+                3 => StandardCursorType.BottomRightCorner,
+                _ => r.Contains(pos) ? StandardCursorType.SizeAll : StandardCursorType.Arrow,
+            };
+        }
+        if (type != _cursorType)
+        {
+            _cursorType = type;
+            Cursor = new Cursor(type);
         }
     }
 }

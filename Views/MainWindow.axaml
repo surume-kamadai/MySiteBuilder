@@ -2,67 +2,134 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MySiteBuilder.ViewModels"
         xmlns:local="using:MySiteBuilder.Controls"
+        xmlns:models="using:MySiteBuilder.Core.Models"
+        xmlns:dock="using:MySiteBuilder.ViewModels.Docking"
+        xmlns:idc="using:Dock.Avalonia.Controls"
         x:Class="MySiteBuilder.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="My Site Builder"
-        Width="1200" Height="760">
+        Width="1280" Height="800">
 
-    <Grid RowDefinitions="Auto, *, Auto">
+    <Window.DataTemplates>
 
-        <!-- 上部ツールバー: ファイル操作・出力 -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#252528" Spacing="6">
-            <StackPanel.Styles>
-                <Style Selector="Button">
-                    <Setter Property="Margin" Value="2"/>
-                    <Setter Property="Padding" Value="10,6"/>
-                </Style>
-            </StackPanel.Styles>
-            <Button Click="OnOpenClick">📂 開く</Button>
-            <Button Click="OnSaveClick">💾 保存</Button>
-            <Border Width="1" Background="#444" Margin="4,6"/>
-            <Button Click="OnExportStaticClick">🌐 静的サイト出力</Button>
-            <Button Click="OnExportLaravelClick">⚙️ Laravel出力</Button>
-        </StackPanel>
+        <!-- ツールパネル -->
+        <DataTemplate DataType="dock:ToolsPanel">
+            <ScrollViewer DataContext="{Binding Editor}" Background="#2D2D30">
+                <StackPanel x:DataType="vm:MainWindowViewModel" Spacing="3" Margin="0,0,0,6">
+                    <StackPanel.Styles>
+                        <Style Selector="Button.tool">
+                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                            <Setter Property="Margin" Value="8,1"/>
+                            <Setter Property="Padding" Value="10,6"/>
+                        </Style>
+                    </StackPanel.Styles>
+                    <Button Classes="tool" Tag="Label"       Click="OnAddClick">🅣 テキスト</Button>
+                    <Button Classes="tool" Tag="Button"      Click="OnAddClick">🔘 ボタン</Button>
+                    <Button Classes="tool" Tag="TextInput"   Click="OnAddClick">⌨ 入力欄</Button>
+                    <Button Classes="tool" Tag="Image"       Click="OnAddClick">🖼 画像</Button>
+                    <Button Classes="tool" Tag="Rect"        Click="OnAddClick">▭ 四角</Button>
+                    <Button Classes="tool" Tag="Circle"      Click="OnAddClick">⬤ 丸</Button>
+                    <Button Classes="tool" Tag="Triangle"    Click="OnAddClick">▲ 三角</Button>
+                    <Button Classes="tool" Tag="Slider"      Click="OnAddClick">🎞 スライダー</Button>
+                    <Button Classes="tool" Tag="ArticleGrid" Click="OnAddClick">▦ 記事グリッド</Button>
+                    <Button Classes="tool" Tag="Accordion"   Click="OnAddClick">≡ アコーディオン</Button>
+                    <Button Classes="tool" Click="OnDeleteClick" IsEnabled="{Binding HasSelection}">🗑 選択を削除</Button>
+                </StackPanel>
+            </ScrollViewer>
+        </DataTemplate>
 
-        <!-- メイン: ツール / キャンバス / Inspector -->
-        <Grid Grid.Row="1" ColumnDefinitions="170, *, 300">
+        <!-- レイヤー（要素一覧＋重ね順/グループ）パネル -->
+        <DataTemplate DataType="dock:ExplorerPanel">
+            <Grid DataContext="{Binding Editor}" Background="#2D2D30">
+                <Grid x:DataType="vm:MainWindowViewModel" Margin="8,6" RowDefinitions="Auto,Auto,*">
+                    <WrapPanel Grid.Row="0">
+                        <WrapPanel.Styles>
+                            <Style Selector="Button.z">
+                                <Setter Property="Margin" Value="0,0,3,3"/>
+                                <Setter Property="Padding" Value="6,3"/>
+                                <Setter Property="FontSize" Value="11"/>
+                            </Style>
+                        </WrapPanel.Styles>
+                        <Button Classes="z" Click="OnBringToFrontClick" IsEnabled="{Binding HasSelection}">⤒最前</Button>
+                        <Button Classes="z" Click="OnBringForwardClick" IsEnabled="{Binding HasSelection}">▲前へ</Button>
+                        <Button Classes="z" Click="OnSendBackwardClick" IsEnabled="{Binding HasSelection}">▼後へ</Button>
+                        <Button Classes="z" Click="OnSendToBackClick" IsEnabled="{Binding HasSelection}">⤓最背</Button>
+                    </WrapPanel>
+                    <WrapPanel Grid.Row="1">
+                        <Button Click="OnGroupClick" IsEnabled="{Binding CanGroup}" Padding="6,3" FontSize="11" Margin="0,0,3,4">▣ グループ化</Button>
+                        <Button Click="OnUngroupClick" IsEnabled="{Binding CanUngroup}" Padding="6,3" FontSize="11" Margin="0,0,3,4">解除</Button>
+                    </WrapPanel>
+                    <ListBox Grid.Row="2" ItemsSource="{Binding ExplorerItems}"
+                             SelectedItem="{Binding ExplorerSelected, Mode=TwoWay}"
+                             Background="#26262A" Margin="0,4,0,0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="models:SiteElement">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{Binding Type}" Foreground="#888888" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Properties.Name}" Foreground="#EEEEEE"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Grid>
+        </DataTemplate>
 
-            <!-- 左: 要素追加ツール -->
-            <StackPanel Grid.Column="0" Background="#2D2D30" Spacing="4">
-                <StackPanel.Styles>
-                    <Style Selector="Button">
-                        <Setter Property="HorizontalAlignment" Value="Stretch"/>
-                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-                        <Setter Property="Margin" Value="8,2"/>
-                        <Setter Property="Padding" Value="10,7"/>
-                    </Style>
-                </StackPanel.Styles>
-                <TextBlock Text="ツール" Foreground="White" Margin="10,10,10,6" FontWeight="Bold"/>
-                <Button Tag="Label"     Click="OnAddClick">🅣 テキスト</Button>
-                <Button Tag="Button"    Click="OnAddClick">🔘 ボタン</Button>
-                <Button Tag="TextInput" Click="OnAddClick">⌨ 入力欄</Button>
-                <Button Tag="Image"     Click="OnAddClick">🖼 画像</Button>
-                <Button Tag="Rect"      Click="OnAddClick">▭ 四角</Button>
-                <Button Tag="Circle"    Click="OnAddClick">⬤ 丸</Button>
-                <Button Tag="Triangle"  Click="OnAddClick">▲ 三角</Button>
-                <Border Height="1" Background="#444" Margin="8,8"/>
-                <Button Click="OnDeleteClick" IsEnabled="{Binding HasSelection}">🗑 選択を削除</Button>
-            </StackPanel>
+        <!-- ページ（ページタブ＋フォルダ）パネル -->
+        <DataTemplate DataType="dock:PagesPanel">
+            <ScrollViewer DataContext="{Binding Editor}" HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled" Background="#1F1F22">
+                <StackPanel x:DataType="vm:MainWindowViewModel" Orientation="Horizontal" Spacing="6" Margin="6,4">
+                    <TextBlock Text="ページ:" Foreground="#BBBBBB" VerticalAlignment="Center" Margin="2,0,4,0"/>
+                    <ListBox ItemsSource="{Binding PageTabs}"
+                             SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
+                             Background="Transparent" BorderThickness="0" Padding="0"
+                             VerticalAlignment="Center">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="models:SitePage">
+                                <TextBlock Text="{Binding Name}" Padding="10,4"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button Click="OnAddPageClick" Padding="8,4">＋ ページ</Button>
+                    <Border Width="1" Background="#444" Margin="4,2"/>
+                    <TextBlock Text="名前:" Foreground="#BBBBBB" VerticalAlignment="Center"/>
+                    <TextBox Text="{Binding ActivePageName}" Width="130" VerticalAlignment="Center"/>
+                    <Button Click="OnDeletePageClick" IsEnabled="{Binding CanDeletePage}" Padding="8,4">🗑 ページ削除</Button>
+                    <Border Width="1" Background="#444" Margin="4,2"/>
+                    <TextBlock Text="フォルダ:" Foreground="#BBBBBB" VerticalAlignment="Center"/>
+                    <ComboBox ItemsSource="{Binding FolderNames}"
+                              SelectedItem="{Binding ActivePageFolderName, Mode=TwoWay}"
+                              MinWidth="110" VerticalAlignment="Center"/>
+                    <Button Click="OnAddFolderClick" Padding="8,4">＋ フォルダ</Button>
+                </StackPanel>
+            </ScrollViewer>
+        </DataTemplate>
 
-            <!-- 中央: キャンバス -->
-            <ScrollViewer Grid.Column="1" Background="#3C3C40"
+        <!-- キャンバス（ドキュメント）パネル -->
+        <DataTemplate DataType="dock:CanvasPanel">
+            <ScrollViewer DataContext="{Binding Editor}" Background="#3C3C40"
                           HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                <Border Margin="30" HorizontalAlignment="Center" VerticalAlignment="Center"
+                <Border x:DataType="vm:MainWindowViewModel" Margin="30"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
                         BoxShadow="0 0 30 0 #60000000">
                     <local:MyCanvasControl Editor="{Binding}"
                                            Width="{Binding CanvasWidth}"
                                            Height="{Binding CanvasHeight}"/>
                 </Border>
             </ScrollViewer>
+        </DataTemplate>
 
-            <!-- 右: Inspector -->
-            <ScrollViewer Grid.Column="2" Background="#2D2D30">
-                <StackPanel Margin="12" Spacing="6">
+        <!-- プロパティ（Inspector）パネル -->
+        <DataTemplate DataType="dock:InspectorPanel">
+            <ScrollViewer DataContext="{Binding Editor}" Background="#2D2D30">
+                <StackPanel x:DataType="vm:MainWindowViewModel" Margin="12" Spacing="6">
                     <StackPanel.Styles>
                         <Style Selector="TextBlock.label">
                             <Setter Property="Foreground" Value="#BBBBBB"/>
@@ -72,8 +139,6 @@
                             <Setter Property="Padding" Value="6,4"/>
                         </Style>
                     </StackPanel.Styles>
-
-                    <TextBlock Text="プロパティ" Foreground="White" FontWeight="Bold" FontSize="14"/>
 
                     <StackPanel IsVisible="{Binding HasSelection}" Spacing="2">
                         <TextBlock Classes="label" Text="種類"/>
@@ -85,7 +150,10 @@
                         <TextBlock Classes="label" Text="テキスト / 画像URL"/>
                         <TextBox Text="{Binding SelText}" AcceptsReturn="True" MaxHeight="80" TextWrapping="Wrap"/>
 
-                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,4,0,0">
+                        <Button IsVisible="{Binding IsImageSelected}" Click="OnPickImageClick"
+                                HorizontalAlignment="Stretch" Margin="0,4,0,0" Padding="8,6">🖼 画像ファイルを選択...</Button>
+
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" Margin="0,4,0,0">
                             <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,4,0">
                                 <TextBlock Classes="label" Text="X"/>
                                 <TextBox Text="{Binding SelX}"/>
@@ -106,23 +174,205 @@
 
                         <TextBlock Classes="label" Text="背景色 (#hex)"/>
                         <TextBox Text="{Binding SelBgColor}"/>
-
                         <TextBlock Classes="label" Text="文字色 (#hex)"/>
                         <TextBox Text="{Binding SelColor}"/>
-
                         <TextBlock Classes="label" Text="文字サイズ"/>
                         <TextBox Text="{Binding SelFontSize}"/>
-
                         <TextBlock Classes="label" Text="リンク先 (route)"/>
                         <TextBox Text="{Binding SelRoute}"/>
+
+                        <!-- ボタンのフォーム設定 -->
+                        <StackPanel IsVisible="{Binding IsButtonSelected}" Spacing="2">
+                            <Border Height="1" Background="#444" Margin="0,8"/>
+                            <TextBlock Text="ボタン設定" Foreground="White" FontWeight="Bold"/>
+                            <TextBlock Classes="label" Text="役割 (role)"/>
+                            <ComboBox ItemsSource="{Binding RoleOptions}"
+                                      SelectedItem="{Binding SelRole, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+                            <TextBlock Classes="label" Text="送信メソッド (静的の送信ボタン用)"/>
+                            <ComboBox ItemsSource="{Binding MethodOptions}"
+                                      SelectedItem="{Binding SelMethod, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+                            <TextBlock Classes="label" Text="送信完了メッセージ（空で遷移のみ）"/>
+                            <TextBox Text="{Binding SelSuccessMessage}"/>
+                            <TextBlock Text="※ role=submit にすると、そのページ全体が &lt;form&gt; になり、リンク先がフォーム送信先(Googleフォーム等)になります。"
+                                       Foreground="#888888" TextWrapping="Wrap" FontSize="11" Margin="0,4,0,0"/>
+                        </StackPanel>
+
+                        <!-- 入力欄のフォーム設定 -->
+                        <StackPanel IsVisible="{Binding IsTextInputSelected}" Spacing="2">
+                            <Border Height="1" Background="#444" Margin="0,8"/>
+                            <TextBlock Text="入力欄設定" Foreground="White" FontWeight="Bold"/>
+                            <TextBlock Classes="label" Text="name 属性（送信キー）"/>
+                            <TextBox Text="{Binding SelInputName}"/>
+                            <TextBlock Classes="label" Text="種類"/>
+                            <ComboBox ItemsSource="{Binding InputTypeOptions}"
+                                      SelectedItem="{Binding SelInputType, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+                            <CheckBox IsChecked="{Binding SelRequired}" Content="必須項目" Foreground="#DDDDDD" Margin="0,4,0,0"/>
+                        </StackPanel>
+
+                        <!-- スライダーのアイテム編集 -->
+                        <StackPanel IsVisible="{Binding IsSliderSelected}" Spacing="2">
+                            <Border Height="1" Background="#444" Margin="0,8"/>
+                            <TextBlock Text="スライダー設定" Foreground="White" FontWeight="Bold"/>
+                            <TextBlock Classes="label" Text="エフェクト"/>
+                            <ComboBox ItemsSource="{Binding SliderEffectOptions}"
+                                      SelectedItem="{Binding SliderEffect, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+                            <CheckBox IsChecked="{Binding SliderAutoplay}" Content="自動再生" Foreground="#DDDDDD"/>
+                            <CheckBox IsChecked="{Binding SliderNavigation}" Content="左右矢印" Foreground="#DDDDDD"/>
+                            <TextBlock Classes="label" Text="スライド一覧"/>
+                            <ItemsControl ItemsSource="{Binding SliderItems}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:SlideItem">
+                                        <Border Background="#26262A" CornerRadius="4" Padding="6" Margin="0,3">
+                                            <StackPanel Spacing="3">
+                                                <TextBox PlaceholderText="タイトル" Text="{Binding Title}"/>
+                                                <TextBox PlaceholderText="本文" Text="{Binding Text}"/>
+                                                <TextBox PlaceholderText="画像URL / data:image" Text="{Binding Image}"/>
+                                                <TextBox PlaceholderText="リンク種別: none / url / page" Text="{Binding LinkType}"/>
+                                                <TextBox PlaceholderText="リンク先" Text="{Binding Link}"/>
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <Button Click="OnPickSlideImageClick" Padding="6,3">画像...</Button>
+                                                    <Button Click="OnRemoveSlideClick" Padding="6,3">削除</Button>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Click="OnAddSlideClick" HorizontalAlignment="Stretch" Margin="0,4">＋ スライド追加</Button>
+                        </StackPanel>
+
+                        <!-- 記事グリッドのアイテム編集 -->
+                        <StackPanel IsVisible="{Binding IsGridSelected}" Spacing="2">
+                            <Border Height="1" Background="#444" Margin="0,8"/>
+                            <TextBlock Text="記事グリッド設定" Foreground="White" FontWeight="Bold"/>
+                            <Grid ColumnDefinitions="*,*">
+                                <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Classes="label" Text="列数"/>
+                                    <TextBox Text="{Binding GridColumns}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                    <TextBlock Classes="label" Text="間隔(px)"/>
+                                    <TextBox Text="{Binding GridGap}"/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Classes="label" Text="カード一覧"/>
+                            <ItemsControl ItemsSource="{Binding GridItems}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:GridItem">
+                                        <Border Background="#26262A" CornerRadius="4" Padding="6" Margin="0,3">
+                                            <StackPanel Spacing="3">
+                                                <TextBox PlaceholderText="タイトル" Text="{Binding Title}"/>
+                                                <TextBox PlaceholderText="本文" Text="{Binding Text}"/>
+                                                <TextBox PlaceholderText="画像URL / data:image" Text="{Binding Image}"/>
+                                                <TextBox PlaceholderText="リンク種別: none / url / page" Text="{Binding LinkType}"/>
+                                                <TextBox PlaceholderText="リンク先" Text="{Binding Link}"/>
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <Button Click="OnPickCardImageClick" Padding="6,3">画像...</Button>
+                                                    <Button Click="OnRemoveCardClick" Padding="6,3">削除</Button>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Click="OnAddCardClick" HorizontalAlignment="Stretch" Margin="0,4">＋ カード追加</Button>
+                        </StackPanel>
+
+                        <!-- アコーディオンのアイテム編集 -->
+                        <StackPanel IsVisible="{Binding IsAccordionSelected}" Spacing="2">
+                            <Border Height="1" Background="#444" Margin="0,8"/>
+                            <TextBlock Text="アコーディオン設定" Foreground="White" FontWeight="Bold"/>
+                            <CheckBox IsChecked="{Binding AccordionOpenFirst}" Content="最初の項目を開いておく" Foreground="#DDDDDD"/>
+                            <TextBlock Classes="label" Text="Q&amp;A 一覧"/>
+                            <ItemsControl ItemsSource="{Binding AccordionItems}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:AccordionItem">
+                                        <Border Background="#26262A" CornerRadius="4" Padding="6" Margin="0,3">
+                                            <StackPanel Spacing="3">
+                                                <TextBox PlaceholderText="質問（見出し）" Text="{Binding Title}"/>
+                                                <TextBox PlaceholderText="回答（本文）" Text="{Binding Content}"
+                                                         AcceptsReturn="True" MaxHeight="80" TextWrapping="Wrap"/>
+                                                <Button Click="OnRemoveQaClick" Padding="6,3" HorizontalAlignment="Left">削除</Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Click="OnAddQaClick" HorizontalAlignment="Stretch" Margin="0,4">＋ Q&amp;A 追加</Button>
+                        </StackPanel>
                     </StackPanel>
 
                     <TextBlock IsVisible="{Binding !HasSelection}"
                                Text="要素を選択すると、ここで編集できます。"
                                Foreground="#888888" TextWrapping="Wrap" Margin="0,8"/>
+
+                    <!-- プロジェクト / ページ設定 -->
+                    <Border Height="1" Background="#444" Margin="0,10"/>
+                    <Expander Header="⚙ プロジェクト設定">
+                        <StackPanel Spacing="2" Margin="0,4">
+                            <TextBlock Classes="label" Text="プロジェクト名（出力フォルダ名）"/>
+                            <TextBox Text="{Binding ProjName}"/>
+                            <Grid ColumnDefinitions="*,*">
+                                <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Classes="label" Text="キャンバス幅"/>
+                                    <TextBox Text="{Binding CanvasWEdit}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                    <TextBlock Classes="label" Text="キャンバス高さ"/>
+                                    <TextBox Text="{Binding CanvasHEdit}"/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Classes="label" Text="サイト背景色 (#hex)"/>
+                            <TextBox Text="{Binding ProjSiteBgColor}"/>
+                            <TextBlock Classes="label" Text="サイト名 (SEO)"/>
+                            <TextBox Text="{Binding ProjSiteName}"/>
+                            <TextBlock Classes="label" Text="言語 (lang)"/>
+                            <TextBox Text="{Binding ProjLang}"/>
+                            <TextBlock Classes="label" Text="サイト共通の説明 (description)"/>
+                            <TextBox Text="{Binding ProjDescription}" AcceptsReturn="True" MaxHeight="70" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="📄 このページの設定">
+                        <StackPanel Spacing="2" Margin="0,4">
+                            <TextBlock Classes="label" Text="ページ背景色 (#hex, 空でサイト共通)"/>
+                            <TextBox Text="{Binding PageBg}"/>
+                            <TextBlock Classes="label" Text="ページタイトル (SEO)"/>
+                            <TextBox Text="{Binding PageSeoTitle}"/>
+                            <TextBlock Classes="label" Text="ページの説明 (SEO)"/>
+                            <TextBox Text="{Binding PageSeoDescription}" AcceptsReturn="True" MaxHeight="70" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Expander>
                 </StackPanel>
             </ScrollViewer>
-        </Grid>
+        </DataTemplate>
+
+    </Window.DataTemplates>
+
+    <Grid RowDefinitions="Auto, *, Auto">
+
+        <!-- 上部ツールバー: ファイル操作・出力・レイアウト -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#252528" Spacing="6">
+            <StackPanel.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Margin" Value="2"/>
+                    <Setter Property="Padding" Value="10,6"/>
+                </Style>
+            </StackPanel.Styles>
+            <Button Click="OnOpenClick">📂 開く</Button>
+            <Button Click="OnSaveClick">💾 保存</Button>
+            <Border Width="1" Background="#444" Margin="4,6"/>
+            <Button Click="OnUndoClick" IsEnabled="{Binding CanUndo}">↶ 元に戻す</Button>
+            <Button Click="OnRedoClick" IsEnabled="{Binding CanRedo}">↷ やり直し</Button>
+            <Border Width="1" Background="#444" Margin="4,6"/>
+            <Button Click="OnExportStaticClick">🌐 静的サイト出力</Button>
+            <Button Click="OnExportLaravelClick">⚙️ Laravel出力</Button>
+            <Border Width="1" Background="#444" Margin="4,6"/>
+            <Button Click="OnResetLayoutClick">🗔 レイアウト初期化</Button>
+        </StackPanel>
+
+        <!-- ドッキング領域: パネルをドラッグで自由に再配置・分割・フロート -->
+        <idc:DockControl Grid.Row="1" Layout="{Binding Layout}"/>
 
         <!-- 下部ステータスバー -->
         <Border Grid.Row="2" Background="#007acc" Padding="10,5">
