@@ -1,81 +1,446 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
-using Avalonia.Media.Immutable;
-using MySiteBuilder.Models;
+using Avalonia.Media.Imaging;
+using MySiteBuilder.Core.Models;
+using MySiteBuilder.ViewModels;
 
 namespace MySiteBuilder.Controls;
 
+// ============================================================
+// 自前の編集キャンバス（Konva の代替）。
+//   - ViewModel の要素(SiteElement)を種類別に描画（画像は実ビットマップ）
+//   - クリックで選択、ドラッグで移動、四隅ハンドルでリサイズ、Delete で削除
+// ============================================================
 public class MyCanvasControl : Control
 {
-    // ViewModelsからデータを受け取るための「依存関係プロパティ（AvaloniaProperty）」の定義
-    public static readonly StyledProperty<IEnumerable<NodeData>?> NodesProperty =
-        AvaloniaProperty.Register<MyCanvasControl, IEnumerable<NodeData>?>(nameof(Nodes));
+    private enum DragMode { None, Move, Resize }
 
-    public IEnumerable<NodeData>? Nodes
+    private const double HandleHit = 7;   // ハンドルの当たり判定半径
+    private const double MinSize = 12;    // 最小サイズ
+
+    public static readonly StyledProperty<MainWindowViewModel?> EditorProperty =
+        AvaloniaProperty.Register<MyCanvasControl, MainWindowViewModel?>(nameof(Editor));
+
+    public MainWindowViewModel? Editor
     {
-        get => GetValue(NodesProperty);
-        set => SetValue(NodesProperty, value);
+        get => GetValue(EditorProperty);
+        set => SetValue(EditorProperty, value);
     }
+
+    private DragMode _mode;
+    private int _resizeCorner;       // 0=TL 1=TR 2=BL 3=BR
+    private Point _anchor;           // リサイズ時に固定する対角コーナー
+    private Point _dragStartPointer; // 移動開始時のポインタ位置
+    private readonly List<(SiteElement el, double x, double y)> _dragStarts = new(); // 移動開始時の各選択要素の位置
+    private bool _pushedThisDrag;    // このドラッグでUndoスナップショット済みか
+    private StandardCursorType _cursorType = StandardCursorType.Arrow;
+
+    // 画像のビットマップキャッシュ（data URL / ローカルパス → Bitmap）
+    private readonly Dictionary<string, Bitmap?> _imgCache = new();
 
     public MyCanvasControl()
     {
-        // データ（Nodes）が変更されたら再描画するように設定
-        AffectsRender<MyCanvasControl>(NodesProperty);
+        Focusable = true;
+        ClipToBounds = true;
     }
 
-    // 描画ループ（Konvaの代わり）
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == EditorProperty)
+        {
+            if (change.OldValue is MainWindowViewModel oldVm) oldVm.RedrawRequested -= OnRedraw;
+            if (change.NewValue is MainWindowViewModel newVm) newVm.RedrawRequested += OnRedraw;
+            InvalidateVisual();
+        }
+    }
+
+    private void OnRedraw() => InvalidateVisual();
+
+    // ============================================================
+    // 描画
+    // ============================================================
     public override void Render(DrawingContext context)
     {
         base.Render(context);
 
-        // 1. 背景のクリア
-        context.FillRectangle(Brushes.DarkGray, Bounds);
+        var vm = Editor;
+        var bg = vm != null ? CssColor.Brush(vm.PageBackground, Brushes.White) : Brushes.White;
+        context.FillRectangle(bg, new Rect(Bounds.Size));
 
-        // 2. ノードのデータが無ければ何もしない
-        if (Nodes == null) return;
+        if (vm == null) return;
 
-        // 3. データをループして描画していく
-        foreach (var node in Nodes)
+        foreach (var el in vm.Elements)
+            RenderElement(context, el, 0, 0);
+
+        // 選択枠（複数選択は全てに枠、ハンドルはプライマリのみ）
+        foreach (var el in vm.Elements)
         {
-            var rect = new Rect(node.X, node.Y, node.Width, node.Height);
-            
-            var fillBrush = node.IsSelected ? Brushes.Orange : Brushes.SteelBlue;
-            var borderPen = new ImmutablePen(Brushes.White, 2);
-
-            // 描画命令
-            context.DrawRectangle(fillBrush, borderPen, rect);
+            if (!vm.IsSelected(el)) continue;
+            var t = el.Transform;
+            var rect = new Rect(t.X, t.Y, t.Width, t.Height);
+            bool primary = ReferenceEquals(el, vm.Selected);
+            context.DrawRectangle(null, new Pen(Brushes.OrangeRed, primary ? 2 : 1), rect);
+            if (primary)
+            {
+                DrawHandle(context, rect.TopLeft);
+                DrawHandle(context, rect.TopRight);
+                DrawHandle(context, rect.BottomLeft);
+                DrawHandle(context, rect.BottomRight);
+            }
         }
     }
 
-    // マウスクリック時の処理
+    private static void DrawHandle(DrawingContext ctx, Point p)
+    {
+        var r = new Rect(p.X - 4, p.Y - 4, 8, 8);
+        ctx.DrawRectangle(Brushes.White, new Pen(Brushes.OrangeRed, 1.5), r);
+    }
+
+    private void RenderElement(DrawingContext ctx, SiteElement el, double ox, double oy)
+    {
+        var t = el.Transform;
+        var rect = new Rect(ox + t.X, oy + t.Y, Math.Max(1, t.Width), Math.Max(1, t.Height));
+        var p = el.Properties;
+
+        var fill = CssColor.Brush(p.Bgcolor, Brushes.Transparent);
+        var textBrush = CssColor.Brush(p.Color, Brushes.Black);
+        double fontSize = p.Fontsize is > 0 ? p.Fontsize.Value : 16;
+
+        switch (el.Type)
+        {
+            case "Rect":
+                ctx.DrawRectangle(fill, null, rect);
+                break;
+
+            case "Circle":
+                ctx.DrawEllipse(fill, null, rect.Center, rect.Width / 2, rect.Height / 2);
+                break;
+
+            case "Triangle":
+                ctx.DrawGeometry(fill, null, TriangleGeometry(rect));
+                break;
+
+            case "Label":
+                DrawText(ctx, p.Text ?? "", rect, fontSize, textBrush, TextAlignment.Left, false);
+                break;
+
+            case "Button":
+            {
+                var btnBg = CssColor.Brush(p.Bgcolor, new SolidColorBrush(Color.Parse("#007acc")));
+                ctx.DrawRectangle(btnBg, null, rect, 5, 5);
+                DrawText(ctx, p.Text ?? "", rect, fontSize, textBrush, TextAlignment.Center, true);
+                break;
+            }
+
+            case "TextInput":
+            {
+                ctx.DrawRectangle(Brushes.White, new Pen(Brushes.Gray, 1), rect, 4, 4);
+                var ph = string.IsNullOrEmpty(p.Text) ? (p.InputName ?? "") : p.Text!;
+                DrawText(ctx, ph, rect.Deflate(new Thickness(8, 0)), fontSize, Brushes.Gray, TextAlignment.Left, true);
+                break;
+            }
+
+            case "Image":
+            {
+                var bmp = GetBitmap(p.Text);
+                if (bmp != null)
+                {
+                    var dest = ContainRect(rect, bmp.Size.Width, bmp.Size.Height);
+                    ctx.DrawImage(bmp, new Rect(bmp.Size), dest);
+                }
+                else
+                {
+                    ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#e8e8e8")), new Pen(Brushes.Gray, 1), rect);
+                    DrawText(ctx, "🖼 " + (p.Name ?? "Image"), rect, 13, Brushes.DimGray, TextAlignment.Center, true);
+                }
+                break;
+            }
+
+            case "Group":
+            {
+                ctx.DrawRectangle(fill, new Pen(new SolidColorBrush(Color.Parse("#888888")), 1) { DashStyle = DashStyle.Dash }, rect);
+                if (el.Children != null)
+                    foreach (var child in el.Children)
+                        RenderElement(ctx, child, rect.X, rect.Y);
+                break;
+            }
+
+            default: // Slider / ArticleGrid / Accordion / Warp 等はプレースホルダ表示
+            {
+                ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#dfe4ea")),
+                    new Pen(new SolidColorBrush(Color.Parse("#888888")), 1) { DashStyle = DashStyle.Dash }, rect);
+                DrawText(ctx, el.Type, rect, 14, Brushes.DimGray, TextAlignment.Center, true);
+                break;
+            }
+        }
+    }
+
+    // object-fit: contain 相当の収まりrectを計算
+    private static Rect ContainRect(Rect box, double bw, double bh)
+    {
+        if (bw <= 0 || bh <= 0) return box;
+        double scale = Math.Min(box.Width / bw, box.Height / bh);
+        double w = bw * scale, h = bh * scale;
+        return new Rect(box.X + (box.Width - w) / 2, box.Y + (box.Height - h) / 2, w, h);
+    }
+
+    private Bitmap? GetBitmap(string? src)
+    {
+        if (string.IsNullOrEmpty(src)) return null;
+        if (_imgCache.TryGetValue(src, out var cached)) return cached;
+
+        Bitmap? bmp = null;
+        try
+        {
+            if (src.StartsWith("data:image"))
+            {
+                int i = src.IndexOf("base64,", StringComparison.Ordinal);
+                if (i >= 0)
+                {
+                    var bytes = Convert.FromBase64String(src[(i + 7)..]);
+                    using var ms = new MemoryStream(bytes);
+                    bmp = new Bitmap(ms);
+                }
+            }
+            else if (File.Exists(src))
+            {
+                bmp = new Bitmap(src);
+            }
+            // http(s) は同期読込しない（プレースホルダ表示）
+        }
+        catch
+        {
+            bmp = null;
+        }
+
+        _imgCache[src] = bmp;
+        return bmp;
+    }
+
+    private static Geometry TriangleGeometry(Rect r)
+    {
+        var geo = new StreamGeometry();
+        using var c = geo.Open();
+        c.BeginFigure(new Point(r.X + r.Width / 2, r.Y), true);
+        c.LineTo(new Point(r.Right, r.Bottom));
+        c.LineTo(new Point(r.X, r.Bottom));
+        c.EndFigure(true);
+        return geo;
+    }
+
+    private static void DrawText(DrawingContext ctx, string text, Rect rect, double size,
+        IBrush brush, TextAlignment align, bool centerVertically)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+            Typeface.Default, size, brush)
+        {
+            MaxTextWidth = Math.Max(1, rect.Width),
+            MaxTextHeight = Math.Max(1, rect.Height),
+            TextAlignment = align,
+        };
+        double y = centerVertically ? rect.Y + Math.Max(0, (rect.Height - ft.Height) / 2) : rect.Y;
+        ctx.DrawText(ft, new Point(rect.X, y));
+    }
+
+    // ============================================================
+    // 操作（選択・移動・リサイズ）
+    // ============================================================
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        var vm = Editor;
+        if (vm == null) return;
 
-        if (Nodes == null) return;
+        Focus();
+        var pos = e.GetPosition(this);
 
-        var point = e.GetPosition(this);
-        
-        // 当たり判定処理
-        foreach (var node in Nodes)
+        // 選択中要素のハンドルを最優先でヒットテスト（リサイズ開始）
+        if (vm.Selected is { } cur)
         {
-            var rect = new Rect(node.X, node.Y, node.Width, node.Height);
-            
-            // 四角形の中にクリック座標が含まれていれば選択状態にする
-            if (rect.Contains(point))
+            var r = RectOf(cur);
+            int corner = HitHandle(pos, r);
+            if (corner >= 0)
             {
-                node.IsSelected = true;
-            }
-            else
-            {
-                node.IsSelected = false;
+                _mode = DragMode.Resize;
+                _pushedThisDrag = false;
+                _resizeCorner = corner;
+                _anchor = corner switch
+                {
+                    0 => r.BottomRight,
+                    1 => r.BottomLeft,
+                    2 => r.TopRight,
+                    _ => r.TopLeft,
+                };
+                e.Pointer.Capture(this);
+                return;
             }
         }
 
-        // 次のフレームで再描画を要求する
-        InvalidateVisual();
+        // 要素の選択（上に描かれている要素を優先）
+        SiteElement? hit = null;
+        for (int i = vm.Elements.Count - 1; i >= 0; i--)
+        {
+            if (RectOf(vm.Elements[i]).Contains(pos)) { hit = vm.Elements[i]; break; }
+        }
+
+        bool additive = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+        if (hit == null)
+        {
+            if (!additive) vm.Select(null);
+            return;
+        }
+
+        if (additive)
+        {
+            vm.ToggleSelect(hit);   // 追加選択（ドラッグはしない）
+            return;
+        }
+
+        // 通常クリック: 既に選択集合に含まれるならプライマリ切替（複数選択維持）、そうでなければ単一選択
+        if (vm.IsSelected(hit)) vm.SetPrimary(hit);
+        else vm.Select(hit);
+
+        // 選択集合まとめてドラッグ開始
+        _mode = DragMode.Move;
+        _pushedThisDrag = false;
+        _dragStartPointer = pos;
+        _dragStarts.Clear();
+        foreach (var s in vm.Selection) _dragStarts.Add((s, s.Transform.X, s.Transform.Y));
+        e.Pointer.Capture(this);
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        var vm = Editor;
+        var pos = e.GetPosition(this);
+
+        if (_mode == DragMode.None) { UpdateCursor(vm, pos); return; }
+        if (vm?.Selected is not { } sel) return;
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) { _mode = DragMode.None; return; }
+
+        // 実際に動かし始めた時点で一度だけUndoスナップショットを取る
+        if (!_pushedThisDrag) { vm.PushUndo(); _pushedThisDrag = true; }
+
+        if (_mode == DragMode.Move)
+        {
+            double dx = pos.X - _dragStartPointer.X;
+            double dy = pos.Y - _dragStartPointer.Y;
+            foreach (var (el, sx, sy) in _dragStarts)
+            {
+                el.Transform.X = Math.Round(sx + dx);
+                el.Transform.Y = Math.Round(sy + dy);
+            }
+        }
+        else // Resize（プライマリのみ）
+        {
+            double w = Math.Max(MinSize, Math.Abs(pos.X - _anchor.X));
+            double h = Math.Max(MinSize, Math.Abs(pos.Y - _anchor.Y));
+            double x = pos.X < _anchor.X ? _anchor.X - w : _anchor.X;
+            double y = pos.Y < _anchor.Y ? _anchor.Y - h : _anchor.Y;
+            sel.Transform.X = Math.Round(x);
+            sel.Transform.Y = Math.Round(y);
+            sel.Transform.Width = Math.Round(w);
+            sel.Transform.Height = Math.Round(h);
+        }
+        vm.NotifyGeometryChanged();
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        _mode = DragMode.None;
+        e.Pointer.Capture(null);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if ((e.Key == Key.Delete || e.Key == Key.Back) && Editor?.Selected != null)
+        {
+            Editor.DeleteSelected();
+            e.Handled = true;
+        }
+    }
+
+    private static Rect RectOf(SiteElement el)
+    {
+        var t = el.Transform;
+        return new Rect(t.X, t.Y, t.Width, t.Height);
+    }
+
+    // pos が四隅ハンドルのどれかに当たればそのコーナー番号、無ければ -1
+    private static int HitHandle(Point pos, Rect r)
+    {
+        Point[] corners = { r.TopLeft, r.TopRight, r.BottomLeft, r.BottomRight };
+        for (int i = 0; i < corners.Length; i++)
+        {
+            if (Math.Abs(pos.X - corners[i].X) <= HandleHit && Math.Abs(pos.Y - corners[i].Y) <= HandleHit)
+                return i;
+        }
+        return -1;
+    }
+
+    private void UpdateCursor(MainWindowViewModel? vm, Point pos)
+    {
+        var type = StandardCursorType.Arrow;
+        if (vm?.Selected is { } sel)
+        {
+            var r = RectOf(sel);
+            int corner = HitHandle(pos, r);
+            type = corner switch
+            {
+                0 => StandardCursorType.TopLeftCorner,
+                1 => StandardCursorType.TopRightCorner,
+                2 => StandardCursorType.BottomLeftCorner,
+                3 => StandardCursorType.BottomRightCorner,
+                _ => r.Contains(pos) ? StandardCursorType.SizeAll : StandardCursorType.Arrow,
+            };
+        }
+        if (type != _cursorType)
+        {
+            _cursorType = type;
+            Cursor = new Cursor(type);
+        }
+    }
+}
+
+// CSS風カラー文字列を Avalonia ブラシへ変換する小さなヘルパ。
+internal static class CssColor
+{
+    private static readonly Regex Rgba =
+        new(@"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)", RegexOptions.Compiled);
+
+    public static IBrush Brush(string? css, IBrush fallback)
+    {
+        if (string.IsNullOrWhiteSpace(css)) return fallback;
+        css = css.Trim();
+        if (css.Equals("transparent", StringComparison.OrdinalIgnoreCase)) return Brushes.Transparent;
+        if (css.Equals("inherit", StringComparison.OrdinalIgnoreCase)) return fallback;
+
+        var m = Rgba.Match(css);
+        if (m.Success)
+        {
+            byte r = (byte)Math.Clamp(int.Parse(m.Groups[1].Value), 0, 255);
+            byte g = (byte)Math.Clamp(int.Parse(m.Groups[2].Value), 0, 255);
+            byte b = (byte)Math.Clamp(int.Parse(m.Groups[3].Value), 0, 255);
+            byte a = m.Groups[4].Success
+                ? (byte)Math.Clamp((int)Math.Round(double.Parse(m.Groups[4].Value, CultureInfo.InvariantCulture) * 255), 0, 255)
+                : (byte)255;
+            return new SolidColorBrush(Color.FromArgb(a, r, g, b));
+        }
+
+        try { return new SolidColorBrush(Color.Parse(css)); }
+        catch { return fallback; }
     }
 }
