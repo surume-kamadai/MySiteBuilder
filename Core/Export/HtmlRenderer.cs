@@ -25,7 +25,7 @@ public sealed class HtmlRenderer
         "\n        .anim-slideleft { animation: slideLeft  0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }" +
         "\n        .anim-slideright{ animation: slideRight 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }";
 
-    // シャドウ種別 → CSS値
+    // シャドウ種別（プリセット） → CSS値。Label は text-shadow に使う。
     private static readonly Dictionary<string, string> ShadowCss = new()
     {
         ["light"]    = "0 4px 10px rgba(0,0,0,0.15)",
@@ -35,12 +35,26 @@ public sealed class HtmlRenderer
         ["float"]    = "0 20px 30px rgba(0,0,0,0.28)",
     };
 
+    // エディタの選択肢と対応する Google Fonts。出力HTMLの<head>へ、使用フォントのみ<link>する。
+    private static readonly (string Family, string Spec)[] GoogleFonts =
+    {
+        ("Noto Sans JP",      "Noto+Sans+JP:wght@400;700"),
+        ("Noto Serif JP",     "Noto+Serif+JP:wght@400;700"),
+        ("M PLUS Rounded 1c", "M+PLUS+Rounded+1c:wght@400;700"),
+        ("Zen Maru Gothic",   "Zen+Maru+Gothic:wght@400;700"),
+        ("Kosugi Maru",       "Kosugi+Maru"),
+        ("Sawarabi Mincho",   "Sawarabi+Mincho"),
+        ("Yusei Magic",       "Yusei+Magic"),
+        ("Dela Gothic One",   "Dela+Gothic+One"),
+    };
+
     private readonly SceneData _scene;
     private readonly RenderMode _mode;
     private readonly IReadOnlyDictionary<string, string> _imageMap;
 
     private readonly List<string> _dynamicCss = new();
     private readonly List<string> _dynamicJs = new();
+    private readonly List<string> _usedFonts = new();   // 使用された Google Fonts の spec（挿入順）
     private double _mobileW = 375;          // スマホ表示の基準幅
     private double _mobileCanvasH = 800;    // スマホ表示の基準高さ
 
@@ -101,6 +115,15 @@ public sealed class HtmlRenderer
             html.Append($"    <meta property=\"og:site_name\" content=\"{Js.EscapeHtml(seo.SiteName)}\">\n");
         html.Append($"    <meta name=\"twitter:card\" content=\"{(Js.Truthy(seo.OgImage) ? "summary_large_image" : "summary")}\">\n");
         // ▲▲ SEO メタタグ構築ここまで ▲▲
+
+        // ▼ 使用された Google Fonts の読み込み（該当フォントを使った時だけ）
+        if (_usedFonts.Count > 0)
+        {
+            html.Append("    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n");
+            html.Append("    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n");
+            string fams = string.Join("&", _usedFonts.Select(s => "family=" + s));
+            html.Append($"    <link href=\"https://fonts.googleapis.com/css2?{fams}&display=swap\" rel=\"stylesheet\">\n");
+        }
 
         html.Append("    <style>\n" + AnimCss + "\n    </style>\n");
         html.Append("    <style id=\"dynamic-styles\">\n    " + cssString + "\n    </style>\n");
@@ -304,26 +327,34 @@ public sealed class HtmlRenderer
             string text    = Js.EscapeHtml(props.Text ?? "");
             string name    = Js.EscapeHtml(props.Name ?? "Unnamed");
             string bgcolor = Js.EscapeHtml(props.Bgcolor ?? "transparent");
+            string bgFill  = GradientBgDecl(props, bgcolor);
+            int cornerR    = (int)Math.Max(0, props.CornerRadius ?? 0);
+            string radiusCss = cornerR != 0 ? $" border-radius: {cornerR}px;" : "";
+            string strokeCss = StrokeDecl(props, type);
             string color   = Js.EscapeHtml(props.Color ?? "inherit");
             string align   = Js.EscapeHtml(Js.Or(props.Align, type == "Button" ? "center" : "left"));
             string fontfam = Js.EscapeHtml(Js.Or(props.FontFamily, "sans-serif"));
+
+            // 使用中の Google Font を検出（出力headに<link>する）
+            string rawFam = props.FontFamily ?? "";
+            foreach (var f in GoogleFonts)
+                if (rawFam.Contains(f.Family) && !_usedFonts.Contains(f.Spec)) _usedFonts.Add(f.Spec);
 
             string animClass = className;
             if (Js.Truthy(props.Animation) && props.Animation != "none")
                 animClass += " anim-" + props.Animation!.ToLowerInvariant();
 
-            string shadow = Js.Or(props.Shadow, "none");
-            string shadowStyle = "";
-            if (ShadowCss.TryGetValue(shadow, out var shadowVal))
-                shadowStyle = (type == "Label" ? "text-shadow: " : "box-shadow: ") + shadowVal + ";";
+            // ドロップシャドウ/プリセット＋光彩＋内側シャドウ＋ベベルを合成した影スタイル
+            string shadowStyle = CombinedShadowDecl(props, type);
 
             // width等を除いたベーススタイル
             string baseStyle = "position: absolute; box-sizing: border-box;";
             if (type != "Group" && type != "ArticleGrid" && type != "Accordion" && type != "Triangle")
             {
-                baseStyle += $" background-color: {bgcolor}; color: {color}; text-align: {align}; font-family: {fontfam};";
+                baseStyle += $" {bgFill} color: {color}; text-align: {align}; font-family: {fontfam};";
                 if (type != "Button" && type != "Image") baseStyle += $" {shadowStyle}";
             }
+            baseStyle += strokeCss;
 
             sb.Append($"{indent}\n");
 
@@ -339,10 +370,10 @@ public sealed class HtmlRenderer
                     sb.Append(RenderTextInput(id, animClass, baseStyle, text, props, indent));
                     break;
                 case "Label":
-                    sb.Append(RenderLabel(id, animClass, baseStyle, text, shadowStyle, indent));
+                    sb.Append(RenderLabel(id, animClass, baseStyle, text, props, shadowStyle, indent));
                     break;
                 case "Rect":
-                    sb.Append($"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{baseStyle}\"></div>\n");
+                    sb.Append($"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{baseStyle}{radiusCss}\"></div>\n");
                     break;
                 case "Circle":
                     sb.Append($"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{baseStyle} border-radius: 50%;\"></div>\n");
@@ -368,7 +399,7 @@ public sealed class HtmlRenderer
                 }
                 case "Triangle":
                 {
-                    string triStyle = $"position: absolute; width: 100%; height: 100%; box-sizing: border-box; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); background-color: {bgcolor};";
+                    string triStyle = $"position: absolute; width: 100%; height: 100%; box-sizing: border-box; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); {bgFill}";
                     sb.Append($"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{baseStyle}\"><div style=\"{triStyle}\"></div></div>\n");
                     break;
                 }
@@ -406,7 +437,7 @@ public sealed class HtmlRenderer
         string text, ElementProperties props, string shadowStyle, string indent)
     {
         string bgcolor = Js.EscapeHtml(props.Bgcolor ?? "transparent");
-        string bgStyle = $"background-color: {bgcolor};";
+        string bgStyle = GradientBgDecl(props, bgcolor);
         if (Js.Truthy(props.BgImage))
         {
             string src = Js.EscapeHtml(ResolveImageSrc(props.BgImage));
@@ -414,14 +445,16 @@ public sealed class HtmlRenderer
         }
 
         string align = Js.EscapeHtml(Js.Or(props.Align, "center"));
-        string btnStyle = $"width: 100%; height: 100%; box-sizing: border-box; {bgStyle} color: {color}; font-size: inherit; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; text-align: {align}; {shadowStyle}";
+        int btnR = (int)Math.Max(0, props.CornerRadius ?? 8);
+        string btnStyle = $"width: 100%; height: 100%; box-sizing: border-box; {bgStyle} color: {color}; font-size: inherit; border: none; border-radius: {btnR}px; cursor: pointer; font-weight: {Js.Or(props.FontWeight, "bold")}; text-align: {align}; {shadowStyle}{StrokeDecl(props, "Button")}{TextExtraCss(props)}";
         string formStyle = "margin: 0; position: absolute; width: 100%; height: 100%;";
+        string btnText = WrapGradText(text, props);
 
         if (props.Role == "submit")
         {
             var sub = new StringBuilder();
             sub.Append($"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{baseStyle} background:none;\">\n");
-            sub.Append($"{indent}    <button type=\"submit\" style=\"{btnStyle} {formStyle}\">{text}</button>\n");
+            sub.Append($"{indent}    <button type=\"submit\" style=\"{btnStyle} {formStyle}\">{btnText}</button>\n");
             sub.Append($"{indent}</div>\n");
             return sub.ToString();
         }
@@ -430,7 +463,7 @@ public sealed class HtmlRenderer
         var sb = new StringBuilder();
         sb.Append($"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{baseStyle} background:none;\">\n");
         sb.Append($"{indent}    <a href=\"{url}\" style=\"{formStyle} display:block; text-decoration:none;\">\n");
-        sb.Append($"{indent}        <button type=\"button\" style=\"{btnStyle}\">{text}</button>\n");
+        sb.Append($"{indent}        <button type=\"button\" style=\"{btnStyle}\">{btnText}</button>\n");
         sb.Append($"{indent}    </a>\n");
         sb.Append($"{indent}</div>\n");
         return sb.ToString();
@@ -460,32 +493,37 @@ public sealed class HtmlRenderer
 
     // テキスト（見出し・本文）
     private string RenderLabel(string id, string animClass, string baseStyle,
-        string text, string shadowStyle, string indent)
+        string text, ElementProperties props, string shadowStyle, string indent)
     {
-        string style = $"{baseStyle} display: block; overflow: hidden; {shadowStyle}";
-        return $"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{style}\">{text}</div>\n";
+        string style = $"{baseStyle} display: block; overflow: hidden; {shadowStyle} font-weight: {Js.Or(props.FontWeight, "normal")};{TextExtraCss(props)}";
+        return $"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{style}\">{WrapGradText(text, props)}</div>\n";
     }
 
-    // 画像。object-fit:contain で全体表示。route があればリンク化。
+    // 画像。object-fit:contain で全体表示。route があればリンク化。グラデーションは乗算オーバーレイで近似。
     private string RenderImage(string id, string animClass, string baseStyle,
         ElementProperties props, string name, string shadowStyle, string indent)
     {
         string src = Js.EscapeHtml(ResolveImageSrc(props.Text));
         string route = props.Route ?? "#";
         bool hasLink = route != "#" && route != "" && route != "none";
-        string imgStyle = $"width: 100%; height: 100%; object-fit: contain; display: block; {shadowStyle}";
+        int r = (int)Math.Max(0, props.CornerRadius ?? 0);
+        string rc = r != 0 ? $" border-radius: {r}px;" : "";
+        string imgStyle = $"width: 100%; height: 100%; object-fit: contain; display: block; {shadowStyle}{rc}";
+        var g = props.Gradient;
+        string overlay = (g?.On == true)
+            ? $"<div style=\"position:absolute; inset:0; {GradientBgDecl(props, "")} mix-blend-mode:multiply; pointer-events:none;\"></div>"
+            : "";
 
         if (hasLink)
         {
             string url = Js.EscapeHtml(route);
-            var sb = new StringBuilder();
-            sb.Append($"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{baseStyle} background:none;\">\n");
-            sb.Append($"{indent}    <a href=\"{url}\" style=\"display:block; width:100%; height:100%;\">\n");
-            sb.Append($"{indent}        <img src=\"{src}\" alt=\"{name}\" style=\"{imgStyle}\">\n");
-            sb.Append($"{indent}    </a>\n");
-            sb.Append($"{indent}</div>\n");
-            return sb.ToString();
+            string inner = $"<img src=\"{src}\" alt=\"{name}\" style=\"{imgStyle}\">";
+            inner = $"<a href=\"{url}\" style=\"display:block; width:100%; height:100%;\">{inner}</a>";
+            return $"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{baseStyle} background:none; overflow:hidden;\">{inner}{overlay}</div>\n";
         }
+
+        if (overlay != "")
+            return $"{indent}<div id=\"{id}\" class=\"{animClass}\" style=\"{baseStyle} overflow:hidden;\"><img src=\"{src}\" alt=\"{name}\" style=\"{imgStyle}\">{overlay}</div>\n";
 
         return $"{indent}<img id=\"{id}\" src=\"{src}\" alt=\"{name}\" class=\"{animClass}\" style=\"{baseStyle} {imgStyle}\">\n";
     }
@@ -766,5 +804,156 @@ public sealed class HtmlRenderer
         }})();");
 
         return sb.ToString();
+    }
+
+    // ============================================================
+    // css-generator.js の C# 移植（純粋ヘルパー群。副作用なし）
+    // ============================================================
+
+    // 背景の CSS 宣言を返す。グラデーション on なら background:gradient、それ以外は単色。
+    private static string GradientBgDecl(ElementProperties props, string bgcolorEscaped)
+    {
+        var g = props.Gradient;
+        if (g?.On == true)
+        {
+            string c1 = Js.EscapeHtml(Js.Or(g.C1, "#4facfe"));
+            string c2 = Js.EscapeHtml(Js.Or(g.C2, "#00f2fe"));
+            if (g.Type == "radial") return $"background: radial-gradient(circle, {c1}, {c2});";
+            double deg = g.Dir switch { "v" => 180.0, "h" => 90.0, "d1" => 135.0, "d2" => 225.0, _ => 180.0 };
+            return $"background: linear-gradient({Js.Num(deg)}deg, {c1}, {c2});";
+        }
+        // bgcolor は #rrggbb か rgba(...)（透明度はピッカー内で色に含まれる）
+        return $"background-color: {bgcolorEscaped};";
+    }
+
+    // #rrggbb(または#rgb) と不透明度 → rgba() 文字列
+    private static string HexToRgba(string? hex, double? a)
+    {
+        string h = (hex ?? "#000000").Replace("#", "");
+        string n = h.Length == 3 ? $"{h[0]}{h[0]}{h[1]}{h[1]}{h[2]}{h[2]}" : h;
+        int r = HexByte(n, 0);
+        int g = HexByte(n, 2);
+        int b = HexByte(n, 4);
+        double al = Math.Min(1, Math.Max(0, a ?? 1));
+        return $"rgba({r}, {g}, {b}, {Js.Num(al)})";
+    }
+
+    private static int HexByte(string hex, int start)
+    {
+        if (hex.Length < start + 2) return 0;
+        try { return Convert.ToInt32(hex.Substring(start, 2), 16); }
+        catch { return 0; }
+    }
+
+    // 境界線(Stroke)のCSS宣言。図形/ボタン/画像は border、テキストは -webkit-text-stroke。
+    private static string StrokeDecl(ElementProperties props, string type)
+    {
+        var s = props.Stroke;
+        if (s?.On != true) return "";
+        double w = Math.Max(0, s.Width ?? 0);
+        if (w <= 0) return "";
+        string c = Js.EscapeHtml(Js.Or(s.Color, "#000000"));
+        if (type == "Label") return $" -webkit-text-stroke: {Js.Num(w)}px {c};";
+        return $" border: {Js.Num(w)}px solid {c};";
+    }
+
+    // テキストの 斜体/下線/字間/行間 のCSS（font-weight は各要素側で出力）
+    private static string TextExtraCss(ElementProperties props)
+    {
+        string s = "";
+        if (props.Italic == true) s += " font-style: italic;";
+        if (props.Underline == true) s += " text-decoration: underline;";
+        double ls = props.LetterSpacing ?? 0;
+        if (ls != 0) s += $" letter-spacing: {Js.Num(ls)}px;";
+        double lh = props.LineHeight ?? 0;
+        if (lh != 0) s += $" line-height: {Js.Num(lh)};";
+        return s;
+    }
+
+    // ドロップシャドウ(自由/プリセット) ＋ 光彩 ＋ 内側シャドウ ＋ ベベル を
+    // 1つの box-shadow(通常) / text-shadow(Label) に合成して返す。
+    private static string CombinedShadowDecl(ElementProperties props, string type)
+    {
+        bool isText = type == "Label";
+        var box = new List<string>();
+        var txt = new List<string>();
+
+        // 1) ドロップシャドウ（自由値優先、無ければプリセット）
+        var ds = props.DropShadow;
+        if (ds?.On == true)
+        {
+            double dx = ds.X ?? 0, dy = ds.Y ?? 0;
+            double dblur = Math.Max(0, ds.Blur ?? 0), dspread = ds.Spread ?? 0;
+            string drgba = HexToRgba(ds.Color ?? "#000000", ds.Opacity ?? 0.35);
+            if (isText) txt.Add($"{Js.Num(dx)}px {Js.Num(dy)}px {Js.Num(dblur)}px {drgba}");
+            else        box.Add($"{Js.Num(dx)}px {Js.Num(dy)}px {Js.Num(dblur)}px {Js.Num(dspread)}px {drgba}");
+        }
+        else if (ShadowCss.TryGetValue(props.Shadow ?? "", out var presetVal))
+        {
+            (isText ? txt : box).Add(presetVal);
+        }
+
+        // 2) 光彩（外側グロー）
+        var gl = props.Glow;
+        if (gl?.On == true)
+        {
+            string grgba = HexToRgba(gl.Color ?? "#00d0ff", gl.Opacity ?? 0.8);
+            double gblur = Math.Max(0, gl.Blur ?? 0), gspread = gl.Spread ?? 0;
+            if (isText) txt.Add($"0 0 {Js.Num(gblur)}px {grgba}");
+            else        box.Add($"0 0 {Js.Num(gblur)}px {Js.Num(gspread)}px {grgba}");
+        }
+
+        // 3) 内側シャドウ（テキスト非対応）
+        var insh = props.InnerShadow;
+        if (insh?.On == true && !isText)
+        {
+            double ix = insh.X ?? 0, iy = insh.Y ?? 0;
+            double iblur = Math.Max(0, insh.Blur ?? 0);
+            string irgba = HexToRgba(insh.Color ?? "#000000", insh.Opacity ?? 0.4);
+            box.Add($"inset {Js.Num(ix)}px {Js.Num(iy)}px {Js.Num(iblur)}px {irgba}");
+        }
+
+        // 4) ベベル＆エンボス（テキスト非対応）: 明暗2方向の内側シャドウで立体感
+        var bv = props.Bevel;
+        if (bv?.On == true && !isText)
+        {
+            double d = Math.Max(1, bv.Depth ?? 1);
+            double op = Math.Min(1, Math.Max(0, bv.Opacity ?? 0.5));
+            string hl = HexToRgba(bv.Highlight ?? "#ffffff", op);
+            string sh = HexToRgba(bv.Shadow ?? "#000000", op);
+            double blur = d * 2;
+            if (bv.Dir == "down")
+            {
+                box.Add($"inset {Js.Num(d)}px {Js.Num(d)}px {Js.Num(blur)}px {sh}");
+                box.Add($"inset -{Js.Num(d)}px -{Js.Num(d)}px {Js.Num(blur)}px {hl}");
+            }
+            else
+            {
+                box.Add($"inset {Js.Num(d)}px {Js.Num(d)}px {Js.Num(blur)}px {hl}");
+                box.Add($"inset -{Js.Num(d)}px -{Js.Num(d)}px {Js.Num(blur)}px {sh}");
+            }
+        }
+
+        var arr = isText ? txt : box;
+        if (arr.Count == 0) return "";
+        return (isText ? "text-shadow: " : "box-shadow: ") + string.Join(", ", arr) + ";";
+    }
+
+    // グラデーション文字（-webkit-background-clip:text 相当）のspanスタイル。off/未設定なら ''。
+    private static string GradTextSpanStyle(ElementProperties props)
+    {
+        var g = props.GradText;
+        if (g?.On != true) return "";
+        string c1 = Js.EscapeHtml(Js.Or(g.C1, "#ff6ec4"));
+        string c2 = Js.EscapeHtml(Js.Or(g.C2, "#7873f5"));
+        double deg = g.Dir switch { "v" => 180.0, "h" => 90.0, "d1" => 135.0, "d2" => 225.0, _ => 90.0 };
+        return $"background: linear-gradient({Js.Num(deg)}deg, {c1}, {c2}); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;";
+    }
+
+    // テキストをグラデ文字 span で包む（off ならそのまま返す）
+    private static string WrapGradText(string text, ElementProperties props)
+    {
+        string st = GradTextSpanStyle(props);
+        return st != "" ? $"<span style=\"{st}\">{text}</span>" : text;
     }
 }

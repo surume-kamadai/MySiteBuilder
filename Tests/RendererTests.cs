@@ -141,4 +141,140 @@ public class RendererTests
         }));
         Assert.DoesNotContain("<form", h);
     }
+
+    // --- レイヤースタイル（css-generator.js の C# 移植分） ---
+
+    private static SceneData OneElement(string type, ElementProperties props) => Base(elements: new List<SiteElement>
+    {
+        new() { Id = "e1", Type = type, Transform = new() { X = 0, Y = 0, Width = 100, Height = 50 }, Properties = props },
+    });
+
+    [Fact]
+    public void Gradient_LinearAppliesDirectionDegrees()
+    {
+        var h = Render(OneElement("Rect", new() { Gradient = new() { On = true, Type = "linear", Dir = "h", C1 = "#111111", C2 = "#222222" } }));
+        Assert.Contains("background: linear-gradient(90deg, #111111, #222222);", h);
+    }
+
+    [Fact]
+    public void Gradient_RadialUsesCircle()
+    {
+        var h = Render(OneElement("Circle", new() { Gradient = new() { On = true, Type = "radial", C1 = "#aaa", C2 = "#bbb" } }));
+        Assert.Contains("background: radial-gradient(circle, #aaa, #bbb);", h);
+    }
+
+    [Fact]
+    public void Gradient_OffFallsBackToBgcolor()
+    {
+        var h = Render(OneElement("Rect", new() { Bgcolor = "#ff0000", Gradient = new() { On = false } }));
+        Assert.Contains("background-color: #ff0000;", h);
+    }
+
+    [Fact]
+    public void CornerRadius_AppliedToRect()
+    {
+        var h = Render(OneElement("Rect", new() { CornerRadius = 12 }));
+        Assert.Contains("border-radius: 12px;", h);
+    }
+
+    [Fact]
+    public void CornerRadius_ButtonDefaultsToEight()
+    {
+        var h = Render(OneElement("Button", new() { Text = "OK" }));
+        Assert.Contains("border-radius: 8px;", h);
+    }
+
+    [Fact]
+    public void Stroke_RectRendersBorder()
+    {
+        var h = Render(OneElement("Rect", new() { Stroke = new() { On = true, Width = 3, Color = "#333333" } }));
+        Assert.Contains("border: 3px solid #333333;", h);
+    }
+
+    [Fact]
+    public void Stroke_LabelRendersTextStroke()
+    {
+        var h = Render(OneElement("Label", new() { Text = "hi", Stroke = new() { On = true, Width = 2, Color = "#000000" } }));
+        Assert.Contains("-webkit-text-stroke: 2px #000000;", h);
+    }
+
+    [Fact]
+    public void DropShadow_FreeValuesProduceBoxShadow()
+    {
+        var h = Render(OneElement("Rect", new()
+        {
+            DropShadow = new() { On = true, X = 4, Y = 6, Blur = 10, Spread = 2, Color = "#000000", Opacity = 0.5 },
+        }));
+        Assert.Contains("box-shadow: 4px 6px 10px 2px rgba(0, 0, 0, 0.5);", h);
+    }
+
+    [Fact]
+    public void DropShadow_PresetUsedWhenFreeValueOff()
+    {
+        var h = Render(OneElement("Rect", new() { Shadow = "light" }));
+        Assert.Contains("box-shadow: 0 4px 10px rgba(0,0,0,0.15);", h);
+    }
+
+    [Fact]
+    public void Glow_AddsSecondBoxShadowLayer()
+    {
+        var h = Render(OneElement("Rect", new()
+        {
+            DropShadow = new() { On = true, X = 0, Y = 0, Blur = 1, Spread = 0, Color = "#000000", Opacity = 1 },
+            Glow = new() { On = true, Color = "#00d0ff", Blur = 20, Spread = 0, Opacity = 0.8 },
+        }));
+        Assert.Contains("0 0 20px 0px rgba(0, 208, 255, 0.8)", h);
+    }
+
+    [Fact]
+    public void GradText_WrapsTextInGradientSpan()
+    {
+        var h = Render(OneElement("Label", new() { Text = "見出し", GradText = new() { On = true, C1 = "#ff6ec4", C2 = "#7873f5" } }));
+        Assert.Contains("-webkit-text-fill-color: transparent", h);
+        Assert.Contains(">見出し</span>", h);
+    }
+
+    [Fact]
+    public void FontWeight_LabelDefaultsToNormalButtonToBold()
+    {
+        var hLabel = Render(OneElement("Label", new() { Text = "x" }));
+        Assert.Contains("font-weight: normal;", hLabel);
+
+        var hButton = Render(OneElement("Button", new() { Text = "x" }));
+        Assert.Contains("font-weight: bold;", hButton);
+    }
+
+    [Fact]
+    public void TextExtras_ItalicUnderlineLetterSpacingLineHeight()
+    {
+        var h = Render(OneElement("Label", new()
+        {
+            Text = "x", Italic = true, Underline = true, LetterSpacing = 2, LineHeight = 1.8,
+        }));
+        Assert.Contains("font-style: italic;", h);
+        Assert.Contains("text-decoration: underline;", h);
+        Assert.Contains("letter-spacing: 2px;", h);
+        Assert.Contains("line-height: 1.8;", h);
+    }
+
+    [Fact]
+    public void Image_GradientOnAddsMultiplyOverlay()
+    {
+        var h = Render(OneElement("Image", new() { Text = "img.png", Gradient = new() { On = true, C1 = "#111", C2 = "#222" } }));
+        Assert.Contains("mix-blend-mode:multiply", h);
+    }
+
+    [Fact]
+    public void GoogleFont_UsedFontEmitsLinkTag()
+    {
+        var h = Render(OneElement("Label", new() { Text = "x", FontFamily = "'Noto Sans JP', sans-serif" }));
+        Assert.Contains("fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700", h);
+    }
+
+    [Fact]
+    public void GoogleFont_UnusedWhenFontNotSelected()
+    {
+        var h = Render(OneElement("Label", new() { Text = "x", FontFamily = "Arial" }));
+        Assert.DoesNotContain("fonts.googleapis.com", h);
+    }
 }

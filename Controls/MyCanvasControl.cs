@@ -117,15 +117,18 @@ public class MyCanvasControl : Control
         switch (el.Type)
         {
             case "Rect":
-                ctx.DrawRectangle(fill, null, rect);
+            {
+                double cr = Math.Max(0, p.CornerRadius ?? 0);
+                ctx.DrawRectangle(FillBrush(p, fill), StrokePen(p), rect, cr, cr);
                 break;
+            }
 
             case "Circle":
-                ctx.DrawEllipse(fill, null, rect.Center, rect.Width / 2, rect.Height / 2);
+                ctx.DrawEllipse(FillBrush(p, fill), StrokePen(p), rect.Center, rect.Width / 2, rect.Height / 2);
                 break;
 
             case "Triangle":
-                ctx.DrawGeometry(fill, null, TriangleGeometry(rect));
+                ctx.DrawGeometry(FillBrush(p, fill), StrokePen(p), TriangleGeometry(rect));
                 break;
 
             case "Label":
@@ -134,8 +137,9 @@ public class MyCanvasControl : Control
 
             case "Button":
             {
-                var btnBg = CssColor.Brush(p.Bgcolor, new SolidColorBrush(Color.Parse("#007acc")));
-                ctx.DrawRectangle(btnBg, null, rect, 5, 5);
+                var btnBg = FillBrush(p, CssColor.Brush(p.Bgcolor, new SolidColorBrush(Color.Parse("#007acc"))));
+                double btnR = Math.Max(0, p.CornerRadius ?? 8);
+                ctx.DrawRectangle(btnBg, StrokePen(p), rect, btnR, btnR);
                 DrawText(ctx, p.Text ?? "", rect, fontSize, textBrush, TextAlignment.Center, true);
                 break;
             }
@@ -181,6 +185,49 @@ public class MyCanvasControl : Control
                 break;
             }
         }
+    }
+
+    // レイヤースタイル: 塗りグラデーション（node-style.js の applyGradient に対応。off ならそのまま fallback を返す）
+    private static IBrush FillBrush(ElementProperties p, IBrush fallback)
+    {
+        var g = p.Gradient;
+        if (g?.On != true) return fallback;
+
+        var stops = new GradientStops
+        {
+            new GradientStop(CssColor.ParseColor(g.C1, Color.FromRgb(0x4f, 0xac, 0xfe)), 0),
+            new GradientStop(CssColor.ParseColor(g.C2, Color.FromRgb(0x00, 0xf2, 0xfe)), 1),
+        };
+
+        if (g.Type == "radial")
+        {
+            return new RadialGradientBrush
+            {
+                GradientStops = stops,
+                Center = RelativePoint.Center,
+                GradientOrigin = RelativePoint.Center,
+                Radius = 0.5,
+            };
+        }
+
+        var (start, end) = g.Dir switch
+        {
+            "h"  => (new RelativePoint(0, 0.5, RelativeUnit.Relative), new RelativePoint(1, 0.5, RelativeUnit.Relative)),
+            "d1" => (new RelativePoint(0, 0, RelativeUnit.Relative), new RelativePoint(1, 1, RelativeUnit.Relative)),
+            "d2" => (new RelativePoint(1, 0, RelativeUnit.Relative), new RelativePoint(0, 1, RelativeUnit.Relative)),
+            _    => (new RelativePoint(0.5, 0, RelativeUnit.Relative), new RelativePoint(0.5, 1, RelativeUnit.Relative)),
+        };
+        return new LinearGradientBrush { GradientStops = stops, StartPoint = start, EndPoint = end };
+    }
+
+    // レイヤースタイル: 境界線（css-generator.js の strokeDecl に対応。off/幅0なら null）
+    private static Pen? StrokePen(ElementProperties p)
+    {
+        var s = p.Stroke;
+        if (s?.On != true) return null;
+        double w = Math.Max(0, s.Width ?? 0);
+        if (w <= 0) return null;
+        return new Pen(CssColor.Brush(s.Color, Brushes.Black), w);
     }
 
     // object-fit: contain 相当の収まりrectを計算
@@ -441,6 +488,27 @@ internal static class CssColor
         }
 
         try { return new SolidColorBrush(Color.Parse(css)); }
+        catch { return fallback; }
+    }
+
+    public static Color ParseColor(string? css, Color fallback)
+    {
+        if (string.IsNullOrWhiteSpace(css)) return fallback;
+        css = css.Trim();
+
+        var m = Rgba.Match(css);
+        if (m.Success)
+        {
+            byte r = (byte)Math.Clamp(int.Parse(m.Groups[1].Value), 0, 255);
+            byte g = (byte)Math.Clamp(int.Parse(m.Groups[2].Value), 0, 255);
+            byte b = (byte)Math.Clamp(int.Parse(m.Groups[3].Value), 0, 255);
+            byte a = m.Groups[4].Success
+                ? (byte)Math.Clamp((int)Math.Round(double.Parse(m.Groups[4].Value, CultureInfo.InvariantCulture) * 255), 0, 255)
+                : (byte)255;
+            return Color.FromArgb(a, r, g, b);
+        }
+
+        try { return Color.Parse(css); }
         catch { return fallback; }
     }
 }
