@@ -408,6 +408,16 @@ public class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelColor));
         OnPropertyChanged(nameof(SelFontSize));
         OnPropertyChanged(nameof(SelRoute));
+        OnPropertyChanged(nameof(SelCornerRadius));
+        OnPropertyChanged(nameof(SelStrokeOn));
+        OnPropertyChanged(nameof(SelStrokeWidth));
+        OnPropertyChanged(nameof(SelStrokeColor));
+        OnPropertyChanged(nameof(SelGradientOn));
+        OnPropertyChanged(nameof(SelGradientType));
+        OnPropertyChanged(nameof(SelGradientDir));
+        OnPropertyChanged(nameof(SelGradientC1));
+        OnPropertyChanged(nameof(SelGradientC2));
+        OnPropertyChanged(nameof(IsLayerStyleSelected));
         OnPropertyChanged(nameof(IsImageSelected));
         OnPropertyChanged(nameof(IsButtonSelected));
         OnPropertyChanged(nameof(IsTextInputSelected));
@@ -504,6 +514,68 @@ public class MainWindowViewModel : ViewModelBase
         get => _selected?.Properties.Route ?? "";
         set { if (_selected != null) { PushUndo(); _selected.Properties.Route = value; OnPropertyChanged(); } }
     }
+
+    // --- レイヤースタイル プロキシ（layer-style.js に対応：塗りグラデ/境界線/角丸）---
+
+    public double SelCornerRadius
+    {
+        get => _selected?.Properties.CornerRadius ?? 0;
+        set { if (_selected != null) { PushUndo(); _selected.Properties.CornerRadius = value; OnPropertyChanged(); Redraw(); } }
+    }
+
+    public bool SelStrokeOn
+    {
+        get => _selected?.Properties.Stroke?.On ?? false;
+        set { if (_selected != null) { PushUndo(); (_selected.Properties.Stroke ??= new StrokeConfig()).On = value; OnPropertyChanged(); Redraw(); } }
+    }
+
+    public double SelStrokeWidth
+    {
+        get => _selected?.Properties.Stroke?.Width ?? 2;
+        set { if (_selected != null) { PushUndo(); (_selected.Properties.Stroke ??= new StrokeConfig()).Width = value; OnPropertyChanged(); Redraw(); } }
+    }
+
+    public string SelStrokeColor
+    {
+        get => _selected?.Properties.Stroke?.Color ?? "#000000";
+        set { if (_selected != null) { PushUndo(); (_selected.Properties.Stroke ??= new StrokeConfig()).Color = value; OnPropertyChanged(); Redraw(); } }
+    }
+
+    public bool SelGradientOn
+    {
+        get => _selected?.Properties.Gradient?.On ?? false;
+        set { if (_selected != null) { PushUndo(); (_selected.Properties.Gradient ??= new GradientConfig()).On = value; OnPropertyChanged(); Redraw(); } }
+    }
+
+    public string SelGradientType
+    {
+        get => _selected?.Properties.Gradient?.Type ?? "linear";
+        set { if (_selected != null) { PushUndo(); (_selected.Properties.Gradient ??= new GradientConfig()).Type = value; OnPropertyChanged(); Redraw(); } }
+    }
+
+    public string SelGradientDir
+    {
+        get => _selected?.Properties.Gradient?.Dir ?? "v";
+        set { if (_selected != null) { PushUndo(); (_selected.Properties.Gradient ??= new GradientConfig()).Dir = value; OnPropertyChanged(); Redraw(); } }
+    }
+
+    public string SelGradientC1
+    {
+        get => _selected?.Properties.Gradient?.C1 ?? "#4facfe";
+        set { if (_selected != null) { PushUndo(); (_selected.Properties.Gradient ??= new GradientConfig()).C1 = value; OnPropertyChanged(); Redraw(); } }
+    }
+
+    public string SelGradientC2
+    {
+        get => _selected?.Properties.Gradient?.C2 ?? "#00f2fe";
+        set { if (_selected != null) { PushUndo(); (_selected.Properties.Gradient ??= new GradientConfig()).C2 = value; OnPropertyChanged(); Redraw(); } }
+    }
+
+    public string[] GradientTypeOptions { get; } = { "linear", "radial" };
+    public string[] GradientDirOptions { get; } = { "v", "h", "d1", "d2" };
+
+    // レイヤースタイル欄を表示できる要素種別（キャンバスに実際に描画反映される図形のみ）
+    public bool IsLayerStyleSelected => _selected != null && _selected.Type is "Rect" or "Circle" or "Triangle" or "Button";
 
     // --- フォーム設定プロキシ（Button / TextInput）---
 

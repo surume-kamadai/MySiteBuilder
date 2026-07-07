@@ -181,6 +181,53 @@
                         <TextBlock Classes="label" Text="リンク先 (route)"/>
                         <TextBox Text="{Binding SelRoute}"/>
 
+                        <!-- レイヤースタイル（塗りグラデ/境界線/角丸） -->
+                        <StackPanel IsVisible="{Binding IsLayerStyleSelected}" Spacing="2">
+                            <Border Height="1" Background="#444" Margin="0,8"/>
+                            <TextBlock Text="レイヤースタイル" Foreground="White" FontWeight="Bold"/>
+
+                            <TextBlock Classes="label" Text="角丸 (px)"/>
+                            <TextBox Text="{Binding SelCornerRadius}"/>
+
+                            <CheckBox IsChecked="{Binding SelStrokeOn}" Content="境界線" Foreground="#DDDDDD" Margin="0,4,0,0"/>
+                            <Grid ColumnDefinitions="*,*" IsVisible="{Binding SelStrokeOn}" Margin="0,2,0,0">
+                                <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Classes="label" Text="太さ"/>
+                                    <TextBox Text="{Binding SelStrokeWidth}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                    <TextBlock Classes="label" Text="色 (#hex)"/>
+                                    <TextBox Text="{Binding SelStrokeColor}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <CheckBox IsChecked="{Binding SelGradientOn}" Content="塗りグラデーション" Foreground="#DDDDDD" Margin="0,4,0,0"/>
+                            <StackPanel IsVisible="{Binding SelGradientOn}" Spacing="2" Margin="0,2,0,0">
+                                <Grid ColumnDefinitions="*,*">
+                                    <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                        <TextBlock Classes="label" Text="種類"/>
+                                        <ComboBox ItemsSource="{Binding GradientTypeOptions}"
+                                                  SelectedItem="{Binding SelGradientType, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                        <TextBlock Classes="label" Text="方向"/>
+                                        <ComboBox ItemsSource="{Binding GradientDirOptions}"
+                                                  SelectedItem="{Binding SelGradientDir, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,*">
+                                    <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                        <TextBlock Classes="label" Text="色1"/>
+                                        <TextBox Text="{Binding SelGradientC1}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                        <TextBlock Classes="label" Text="色2"/>
+                                        <TextBox Text="{Binding SelGradientC2}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+
                         <!-- ボタンのフォーム設定 -->
                         <StackPanel IsVisible="{Binding IsButtonSelected}" Spacing="2">
                             <Border Height="1" Background="#444" Margin="0,8"/>
