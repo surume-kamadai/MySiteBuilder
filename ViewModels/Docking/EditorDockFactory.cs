@@ -1,108 +1,62 @@
-using System;
-using System.Collections.Generic;
-using Dock.Avalonia.Controls;
-using Dock.Model.Controls;
-using Dock.Model.Core;
-using Dock.Model.Mvvm;
-using Dock.Model.Mvvm.Controls;
+using Avalonia.Layout;
+using MySiteBuilder.Controls.Docking;
 
 namespace MySiteBuilder.ViewModels.Docking;
 
 // ============================================================
-// ドッキングレイアウトの構築（Dock.Model.Mvvm.Factory）。
-//   上段: ページパネル
+// 初期レイアウト（DockNode ツリー）の組み立て。
+//   上段: ページ
 //   下段: [ツール(左)] | [キャンバス(中央)] | [レイヤー/プロパティ タブ(右)]
-//   各境界はスプリッタでリサイズ可能、パネルはドラッグで再配置/タブ化/フロート可能
-//   （Dock.Avalonia の標準機能。右側のレイヤー/プロパティは Photoshop の
-//   Layers/Channels/Paths のように既定でタブにまとめている）。
+//   自作ドッキングエンジン(DockArea)がこのツリーを描画し、
+//   以降はユーザーがドラッグで自由に組み替える。
 // ============================================================
-public class EditorDockFactory : Factory
+public class EditorDockFactory
 {
     private readonly MainWindowViewModel _editor;
 
     public EditorDockFactory(MainWindowViewModel editor) => _editor = editor;
 
-    public override IRootDock CreateLayout()
+    public DockNode CreateLayout()
     {
-        var tools = new ToolsPanel(_editor);
-        var explorer = new ExplorerPanel(_editor);
-        var inspector = new InspectorPanel(_editor);
-        var pages = new PagesPanel(_editor);
-        var canvas = new CanvasPanel(_editor);
+        var tools = Solo(new ToolsPanel(_editor), canClose: false);
+        var canvas = Solo(new CanvasPanel(_editor), canClose: false);
 
-        // 左列: ツールのみ
-        var leftColumn = new ToolDock
-        {
-            Proportion = 0.18,
-            Alignment = Alignment.Left,
-            ActiveDockable = tools,
-            VisibleDockables = CreateList<IDockable>(tools),
-        };
+        // 右列: レイヤーとプロパティを既定でタブにまとめ、プロパティを前面に
+        var right = new DockTabGroup { ActiveIndex = 1 };
+        right.Panes.Add(Pane(new ExplorerPanel(_editor)));
+        right.Panes.Add(Pane(new InspectorPanel(_editor)));
 
-        var documentArea = new DocumentDock
-        {
-            Proportion = 0.60,
-            CanCreateDocument = false,
-            IsCollapsable = false,
-            ActiveDockable = canvas,
-            VisibleDockables = CreateList<IDockable>(canvas),
-        };
+        var centerRow = new DockSplit { Orientation = Orientation.Horizontal };
+        centerRow.Children.Add(tools);
+        centerRow.Children.Add(canvas);
+        centerRow.Children.Add(right);
+        centerRow.Proportions.Add(0.18);
+        centerRow.Proportions.Add(0.60);
+        centerRow.Proportions.Add(0.22);
 
-        // 右列: レイヤー（エクスプローラー）とプロパティ（インスペクター）を既定でタブにまとめる
-        var rightColumn = new ToolDock
-        {
-            Proportion = 0.22,
-            Alignment = Alignment.Right,
-            ActiveDockable = inspector,
-            VisibleDockables = CreateList<IDockable>(explorer, inspector),
-        };
+        var pages = Solo(new PagesPanel(_editor), canClose: false);
 
-        var centerRow = new ProportionalDock
-        {
-            Orientation = Orientation.Horizontal,
-            VisibleDockables = CreateList<IDockable>(
-                leftColumn,
-                new ProportionalDockSplitter(),
-                documentArea,
-                new ProportionalDockSplitter(),
-                rightColumn),
-        };
-
-        var pagesRow = new ToolDock
-        {
-            Proportion = 0.08,
-            Alignment = Alignment.Top,
-            ActiveDockable = pages,
-            VisibleDockables = CreateList<IDockable>(pages),
-        };
-
-        var mainLayout = new ProportionalDock
-        {
-            Orientation = Orientation.Vertical,
-            VisibleDockables = CreateList<IDockable>(
-                pagesRow,
-                new ProportionalDockSplitter(),
-                centerRow),
-        };
-
-        var root = CreateRootDock();
-        root.Id = "Root";
-        root.Title = "Root";
-        root.ActiveDockable = mainLayout;
-        root.DefaultDockable = mainLayout;
-        root.VisibleDockables = CreateList<IDockable>(mainLayout);
+        var root = new DockSplit { Orientation = Orientation.Vertical };
+        root.Children.Add(pages);
+        root.Children.Add(centerRow);
+        root.Proportions.Add(0.08);
+        root.Proportions.Add(0.92);
         return root;
     }
 
-    // タブをドラッグして切り離す／「Float」を選ぶと、切り離し先のネイティブウィンドウを
-    // どう生成するかをここで登録する。これが無いとパネルを外部ウィンドウ化できない。
-    public override void InitLayout(IDockable layout)
+    // パネル1枚だけの TabGroup（見出し付きで統一的に扱う）。
+    private static DockTabGroup Solo(PanelBase panel, bool canClose = true)
     {
-        HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>
-        {
-            [nameof(IDockWindow)] = () => new HostWindow(),
-        };
-
-        base.InitLayout(layout);
+        var g = new DockTabGroup { ActiveIndex = 0 };
+        g.Panes.Add(Pane(panel, canClose));
+        return g;
     }
+
+    private static DockPane Pane(PanelBase panel, bool canClose = true) => new()
+    {
+        Id = panel.Id,
+        Title = panel.Title,
+        Content = panel,
+        CanClose = canClose,
+    };
 }
