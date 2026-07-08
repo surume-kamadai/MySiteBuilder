@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using Dock.Avalonia.Controls;
 using Dock.Model.Controls;
 using Dock.Model.Core;
 using Dock.Model.Mvvm;
@@ -89,5 +92,17 @@ public class EditorDockFactory : Factory
         root.DefaultDockable = mainLayout;
         root.VisibleDockables = CreateList<IDockable>(mainLayout);
         return root;
+    }
+
+    // タブをドラッグして切り離す／「Float」を選ぶと、切り離し先のネイティブウィンドウを
+    // どう生成するかをここで登録する。これが無いとパネルを外部ウィンドウ化できない。
+    public override void InitLayout(IDockable layout)
+    {
+        HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>
+        {
+            [nameof(IDockWindow)] = () => new HostWindow(),
+        };
+
+        base.InitLayout(layout);
     }
 }
