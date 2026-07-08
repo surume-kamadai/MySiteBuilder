@@ -8,8 +8,10 @@ namespace MySiteBuilder.ViewModels.Docking;
 // ============================================================
 // ドッキングレイアウトの構築（Dock.Model.Mvvm.Factory）。
 //   上段: ページパネル
-//   下段: [ツール/レイヤー(左)] | [キャンバス(中央)] | [プロパティ(右)]
-//   各境界はスプリッタでリサイズ可能、パネルはドラッグで再配置/フロート可能。
+//   下段: [ツール(左)] | [キャンバス(中央)] | [レイヤー/プロパティ タブ(右)]
+//   各境界はスプリッタでリサイズ可能、パネルはドラッグで再配置/タブ化/フロート可能
+//   （Dock.Avalonia の標準機能。右側のレイヤー/プロパティは Photoshop の
+//   Layers/Channels/Paths のように既定でタブにまとめている）。
 // ============================================================
 public class EditorDockFactory : Factory
 {
@@ -25,27 +27,13 @@ public class EditorDockFactory : Factory
         var pages = new PagesPanel(_editor);
         var canvas = new CanvasPanel(_editor);
 
-        // 左列: ツール（上）＋レイヤー（下）を縦に積む
-        var leftColumn = new ProportionalDock
+        // 左列: ツールのみ
+        var leftColumn = new ToolDock
         {
             Proportion = 0.18,
-            Orientation = Orientation.Vertical,
-            VisibleDockables = CreateList<IDockable>(
-                new ToolDock
-                {
-                    Proportion = 0.62,
-                    Alignment = Alignment.Left,
-                    ActiveDockable = tools,
-                    VisibleDockables = CreateList<IDockable>(tools),
-                },
-                new ProportionalDockSplitter(),
-                new ToolDock
-                {
-                    Proportion = 0.38,
-                    Alignment = Alignment.Left,
-                    ActiveDockable = explorer,
-                    VisibleDockables = CreateList<IDockable>(explorer),
-                }),
+            Alignment = Alignment.Left,
+            ActiveDockable = tools,
+            VisibleDockables = CreateList<IDockable>(tools),
         };
 
         var documentArea = new DocumentDock
@@ -57,12 +45,13 @@ public class EditorDockFactory : Factory
             VisibleDockables = CreateList<IDockable>(canvas),
         };
 
+        // 右列: レイヤー（エクスプローラー）とプロパティ（インスペクター）を既定でタブにまとめる
         var rightColumn = new ToolDock
         {
             Proportion = 0.22,
             Alignment = Alignment.Right,
             ActiveDockable = inspector,
-            VisibleDockables = CreateList<IDockable>(inspector),
+            VisibleDockables = CreateList<IDockable>(explorer, inspector),
         };
 
         var centerRow = new ProportionalDock
