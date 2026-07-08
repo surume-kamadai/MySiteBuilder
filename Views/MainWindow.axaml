@@ -418,8 +418,8 @@
             <Button Click="OnResetLayoutClick">🗔 レイアウト初期化</Button>
         </StackPanel>
 
-        <!-- ドッキング領域（自作エンジン）: パネル見出し/タブをドラッグで自由に再配置・分割・タブ化 -->
-        <docking:DockArea Grid.Row="1" Root="{Binding DockRoot}"/>
+        <!-- ドッキング領域（自作エンジン）: ドラッグで再配置・分割・タブ化・フロート化 -->
+        <docking:DockArea Grid.Row="1" Layout="{Binding DockLayout}"/>
 
         <!-- 下部ステータスバー -->
         <Border Grid.Row="2" Background="#007acc" Padding="10,5">

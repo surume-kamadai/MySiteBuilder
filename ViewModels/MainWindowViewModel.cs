@@ -44,13 +44,13 @@ public class MainWindowViewModel : ViewModelBase
 
     // --- ドッキングレイアウト（自作ドッキングエンジン） ---
     private readonly EditorDockFactory _dockFactory;
-    private DockNode? _dockRoot;
+    private DockLayout? _dockLayout;
 
-    /// <summary>DockArea にバインドするレイアウトツリーのルート。</summary>
-    public DockNode? DockRoot
+    /// <summary>DockArea にバインドするレイアウト（ドック本体＋浮遊パネル）。</summary>
+    public DockLayout? DockLayout
     {
-        get => _dockRoot;
-        set { _dockRoot = value; OnPropertyChanged(); }
+        get => _dockLayout;
+        set { _dockLayout = value; OnPropertyChanged(); }
     }
 
     public MainWindowViewModel()
@@ -69,7 +69,7 @@ public class MainWindowViewModel : ViewModelBase
         BuildLayout();
     }
 
-    private void BuildLayout() => DockRoot = _dockFactory.CreateLayout();
+    private void BuildLayout() => DockLayout = _dockFactory.CreateLayout();
 
     /// <summary>パネル配置を初期状態に戻す。</summary>
     public void ResetLayout() => BuildLayout();
