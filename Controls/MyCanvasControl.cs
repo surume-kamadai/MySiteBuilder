@@ -206,7 +206,8 @@ public class MyCanvasControl : Control
                 GradientStops = stops,
                 Center = RelativePoint.Center,
                 GradientOrigin = RelativePoint.Center,
-                Radius = 0.5,
+                RadiusX = RelativeScalar.Middle,
+                RadiusY = RelativeScalar.Middle,
             };
         }
 
