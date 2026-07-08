@@ -45,6 +45,12 @@ public class MyCanvasControl : Control
     // 画像のビットマップキャッシュ（data URL / ローカルパス → Bitmap）
     private readonly Dictionary<string, Bitmap?> _imgCache = new();
 
+    // 要素ID → (直近の内容を表すキー, 生成済みFormattedText)。
+    // FormattedTextの生成はテキストレイアウト計算を伴い軽くないため、ドラッグ中の
+    // 毎ポインタ移動イベントで全要素分を作り直すと要素数に比例して重くなる。
+    // 内容（文字/サイズ/色/幅高さ）が変わっていない限り使い回す。
+    private readonly Dictionary<string, (string Key, FormattedText Text)> _textCache = new();
+
     public MyCanvasControl()
     {
         Focusable = true;
@@ -132,7 +138,7 @@ public class MyCanvasControl : Control
                 break;
 
             case "Label":
-                DrawText(ctx, p.Text ?? "", rect, fontSize, textBrush, TextAlignment.Left, false);
+                DrawText(ctx, el.Id, p.Text ?? "", rect, fontSize, textBrush, TextAlignment.Left, false);
                 break;
 
             case "Button":
@@ -140,7 +146,7 @@ public class MyCanvasControl : Control
                 var btnBg = FillBrush(p, CssColor.Brush(p.Bgcolor, new SolidColorBrush(Color.Parse("#007acc"))));
                 double btnR = Math.Max(0, p.CornerRadius ?? 8);
                 ctx.DrawRectangle(btnBg, StrokePen(p), rect, btnR, btnR);
-                DrawText(ctx, p.Text ?? "", rect, fontSize, textBrush, TextAlignment.Center, true);
+                DrawText(ctx, el.Id, p.Text ?? "", rect, fontSize, textBrush, TextAlignment.Center, true);
                 break;
             }
 
@@ -148,7 +154,7 @@ public class MyCanvasControl : Control
             {
                 ctx.DrawRectangle(Brushes.White, new Pen(Brushes.Gray, 1), rect, 4, 4);
                 var ph = string.IsNullOrEmpty(p.Text) ? (p.InputName ?? "") : p.Text!;
-                DrawText(ctx, ph, rect.Deflate(new Thickness(8, 0)), fontSize, Brushes.Gray, TextAlignment.Left, true);
+                DrawText(ctx, el.Id, ph, rect.Deflate(new Thickness(8, 0)), fontSize, Brushes.Gray, TextAlignment.Left, true);
                 break;
             }
 
@@ -163,7 +169,7 @@ public class MyCanvasControl : Control
                 else
                 {
                     ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#e8e8e8")), new Pen(Brushes.Gray, 1), rect);
-                    DrawText(ctx, "🖼 " + (p.Name ?? "Image"), rect, 13, Brushes.DimGray, TextAlignment.Center, true);
+                    DrawText(ctx, el.Id, "🖼 " + (p.Name ?? "Image"), rect, 13, Brushes.DimGray, TextAlignment.Center, true);
                 }
                 break;
             }
@@ -181,7 +187,7 @@ public class MyCanvasControl : Control
             {
                 ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#dfe4ea")),
                     new Pen(new SolidColorBrush(Color.Parse("#888888")), 1) { DashStyle = DashStyle.Dash }, rect);
-                DrawText(ctx, el.Type, rect, 14, Brushes.DimGray, TextAlignment.Center, true);
+                DrawText(ctx, el.Id, el.Type, rect, 14, Brushes.DimGray, TextAlignment.Center, true);
                 break;
             }
         }
@@ -284,19 +290,35 @@ public class MyCanvasControl : Control
         return geo;
     }
 
-    private static void DrawText(DrawingContext ctx, string text, Rect rect, double size,
+    private void DrawText(DrawingContext ctx, string elementId, string text, Rect rect, double size,
         IBrush brush, TextAlignment align, bool centerVertically)
     {
         if (string.IsNullOrEmpty(text)) return;
+        var ft = GetCachedFormattedText(elementId, text, rect.Width, rect.Height, size, brush, align);
+        double y = centerVertically ? rect.Y + Math.Max(0, (rect.Height - ft.Height) / 2) : rect.Y;
+        ctx.DrawText(ft, new Point(rect.X, y));
+    }
+
+    // 内容（文字/サイズ/揃え/幅高さ/色）が前回描画時と同じなら FormattedText を使い回す。
+    // ドラッグで単に位置(X/Y)が動いただけの要素は幅・高さ・文字が不変なのでキャッシュが効く。
+    private FormattedText GetCachedFormattedText(string elementId, string text, double maxWidth, double maxHeight,
+        double size, IBrush brush, TextAlignment align)
+    {
+        string colorKey = (brush as ISolidColorBrush)?.Color.ToString() ?? brush.ToString() ?? "";
+        string key = $"{text}|{maxWidth:F1}|{maxHeight:F1}|{size}|{align}|{colorKey}";
+
+        if (_textCache.TryGetValue(elementId, out var cached) && cached.Key == key)
+            return cached.Text;
+
         var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
             Typeface.Default, size, brush)
         {
-            MaxTextWidth = Math.Max(1, rect.Width),
-            MaxTextHeight = Math.Max(1, rect.Height),
+            MaxTextWidth = Math.Max(1, maxWidth),
+            MaxTextHeight = Math.Max(1, maxHeight),
             TextAlignment = align,
         };
-        double y = centerVertically ? rect.Y + Math.Max(0, (rect.Height - ft.Height) / 2) : rect.Y;
-        ctx.DrawText(ft, new Point(rect.X, y));
+        _textCache[elementId] = (key, ft);
+        return ft;
     }
 
     // ============================================================
