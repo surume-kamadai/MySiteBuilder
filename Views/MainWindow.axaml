@@ -2,9 +2,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MySiteBuilder.ViewModels"
         xmlns:local="using:MySiteBuilder.Controls"
+        xmlns:docking="using:MySiteBuilder.Controls.Docking"
         xmlns:models="using:MySiteBuilder.Core.Models"
         xmlns:dock="using:MySiteBuilder.ViewModels.Docking"
-        xmlns:idc="using:Dock.Avalonia.Controls"
         x:Class="MySiteBuilder.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="My Site Builder"
@@ -418,8 +418,8 @@
             <Button Click="OnResetLayoutClick">🗔 レイアウト初期化</Button>
         </StackPanel>
 
-        <!-- ドッキング領域: パネルをドラッグで自由に再配置・分割・フロート -->
-        <idc:DockControl Grid.Row="1" Layout="{Binding Layout}"/>
+        <!-- ドッキング領域（自作エンジン）: パネル見出し/タブをドラッグで自由に再配置・分割・タブ化 -->
+        <docking:DockArea Grid.Row="1" Root="{Binding DockRoot}"/>
 
         <!-- 下部ステータスバー -->
         <Border Grid.Row="2" Background="#007acc" Padding="10,5">

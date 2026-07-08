@@ -20,13 +20,6 @@
     <ProjectReference Include="Core/MySiteBuilder.Core.csproj" />
   </ItemGroup>
 
-  <!-- ドッキングレイアウト（パネルの自由な再配置） -->
-  <ItemGroup>
-    <PackageReference Include="Dock.Avalonia" Version="12.0.0.2" />
-    <PackageReference Include="Dock.Model.Mvvm" Version="12.0.0.2" />
-    <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="12.0.0.2" />
-  </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.5" />
     <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />

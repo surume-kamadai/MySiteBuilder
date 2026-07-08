@@ -1,74 +1,54 @@
-using Dock.Model.Mvvm.Controls;
-
 namespace MySiteBuilder.ViewModels.Docking;
 
 // ============================================================
-// ドッキングパネルのViewModel（Dock.Model.Mvvm）。
+// ドッキングパネルの ViewModel（自作ドッキングエンジン用）。
 //   各パネルは共有のエディタVM(MainWindowViewModel)を Editor として持ち、
-//   Viewは DataTemplate 経由で Editor にバインドする。
+//   View は MainWindow.axaml の DataTemplate（型で一致）経由で描画される。
+//   DockPane.Content にこのインスタンスを入れると、対応する DataTemplate が
+//   自動選択される。
 // ============================================================
 
-/// <summary>ツール（要素追加）パネル。</summary>
-public class ToolsPanel : Tool
+/// <summary>全パネル共通の土台。</summary>
+public abstract class PanelBase
 {
+    public string Id { get; }
+    public string Title { get; }
     public MainWindowViewModel Editor { get; }
-    public ToolsPanel(MainWindowViewModel editor)
+
+    protected PanelBase(MainWindowViewModel editor, string id, string title)
     {
         Editor = editor;
-        Id = "Tools";
-        Title = "ツール";
-        CanClose = false;
+        Id = id;
+        Title = title;
     }
+}
+
+/// <summary>ツール（要素追加）パネル。</summary>
+public sealed class ToolsPanel : PanelBase
+{
+    public ToolsPanel(MainWindowViewModel editor) : base(editor, "Tools", "ツール") { }
 }
 
 /// <summary>レイヤー（要素一覧＋重ね順/グループ）パネル。</summary>
-public class ExplorerPanel : Tool
+public sealed class ExplorerPanel : PanelBase
 {
-    public MainWindowViewModel Editor { get; }
-    public ExplorerPanel(MainWindowViewModel editor)
-    {
-        Editor = editor;
-        Id = "Explorer";
-        Title = "レイヤー";
-        CanClose = false;
-    }
+    public ExplorerPanel(MainWindowViewModel editor) : base(editor, "Explorer", "レイヤー") { }
 }
 
 /// <summary>プロパティ（Inspector）パネル。</summary>
-public class InspectorPanel : Tool
+public sealed class InspectorPanel : PanelBase
 {
-    public MainWindowViewModel Editor { get; }
-    public InspectorPanel(MainWindowViewModel editor)
-    {
-        Editor = editor;
-        Id = "Inspector";
-        Title = "プロパティ";
-        CanClose = false;
-    }
+    public InspectorPanel(MainWindowViewModel editor) : base(editor, "Inspector", "プロパティ") { }
 }
 
 /// <summary>ページ（ページタブ＋フォルダ）パネル。</summary>
-public class PagesPanel : Tool
+public sealed class PagesPanel : PanelBase
 {
-    public MainWindowViewModel Editor { get; }
-    public PagesPanel(MainWindowViewModel editor)
-    {
-        Editor = editor;
-        Id = "Pages";
-        Title = "ページ";
-        CanClose = false;
-    }
+    public PagesPanel(MainWindowViewModel editor) : base(editor, "Pages", "ページ") { }
 }
 
-/// <summary>キャンバス（ドキュメント）パネル。</summary>
-public class CanvasPanel : Document
+/// <summary>キャンバス（編集領域）パネル。</summary>
+public sealed class CanvasPanel : PanelBase
 {
-    public MainWindowViewModel Editor { get; }
-    public CanvasPanel(MainWindowViewModel editor)
-    {
-        Editor = editor;
-        Id = "Canvas";
-        Title = "キャンバス";
-        CanClose = false;
-    }
+    public CanvasPanel(MainWindowViewModel editor) : base(editor, "Canvas", "キャンバス") { }
 }

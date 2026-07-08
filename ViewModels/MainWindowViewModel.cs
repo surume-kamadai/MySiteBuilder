@@ -6,7 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
-using Dock.Model.Controls;
+using MySiteBuilder.Controls.Docking;
 using MySiteBuilder.Core.Export;
 using MySiteBuilder.Core.Models;
 using MySiteBuilder.Core.Serialization;
@@ -42,15 +42,15 @@ public class MainWindowViewModel : ViewModelBase
     /// <summary>キャンバス再描画を要求するイベント（Viewのキャンバスが購読）。</summary>
     public event Action? RedrawRequested;
 
-    // --- ドッキングレイアウト ---
+    // --- ドッキングレイアウト（自作ドッキングエンジン） ---
     private readonly EditorDockFactory _dockFactory;
-    private IRootDock? _layout;
+    private DockNode? _dockRoot;
 
-    /// <summary>DockControl にバインドするルートレイアウト。</summary>
-    public IRootDock? Layout
+    /// <summary>DockArea にバインドするレイアウトツリーのルート。</summary>
+    public DockNode? DockRoot
     {
-        get => _layout;
-        set { _layout = value; OnPropertyChanged(); }
+        get => _dockRoot;
+        set { _dockRoot = value; OnPropertyChanged(); }
     }
 
     public MainWindowViewModel()
@@ -69,12 +69,7 @@ public class MainWindowViewModel : ViewModelBase
         BuildLayout();
     }
 
-    private void BuildLayout()
-    {
-        var layout = _dockFactory.CreateLayout();
-        _dockFactory.InitLayout(layout);
-        Layout = layout;
-    }
+    private void BuildLayout() => DockRoot = _dockFactory.CreateLayout();
 
     /// <summary>パネル配置を初期状態に戻す。</summary>
     public void ResetLayout() => BuildLayout();
