@@ -210,7 +210,10 @@ public class DockArea : Decorator
         Grid.SetRow(content, 1);
         grid.Children.Add(content);
 
-        if (trackForDrop)
+        // 固定パネル（キャンバス）を含むグループはドロップ先にしない
+        //  → その領域へパネルを落とすとフロート化する（Photoshop のドキュメント領域と同じ扱い）
+        bool hasLocked = g.Panes.Any(p => p.Locked);
+        if (trackForDrop && !hasLocked)
             _groups.Add((g, content));
         return grid;
     }
@@ -233,8 +236,12 @@ public class DockArea : Decorator
             BorderBrush = new SolidColorBrush(Color.FromRgb(0x00, 0x7A, 0xCC)),
             BorderThickness = new Thickness(0, active ? 2 : 0, 0, 0),
             Padding = new Thickness(12, 5),
-            Cursor = new Cursor(StandardCursorType.SizeAll),
+            Cursor = new Cursor(pane.Locked ? StandardCursorType.Arrow : StandardCursorType.SizeAll),
         };
+
+        // 固定パネル（キャンバス）はドラッグ/フロート/閉じる不可
+        if (pane.Locked)
+            return tab;
 
         // 右クリック: フロート化 / 閉じる
         var flyout = new MenuFlyout();
