@@ -19,7 +19,8 @@ public class EditorDockFactory
     public DockLayout CreateLayout()
     {
         var tools = Solo(new ToolsPanel(_editor), canClose: false);
-        var canvas = Solo(new CanvasPanel(_editor), canClose: false);
+        // キャンバスは固定パネル（ドキュメント領域相当）。ドラッグ/タブ化/フロート不可・ドロップ先にもならない。
+        var canvas = Solo(new CanvasPanel(_editor), canClose: false, locked: true);
 
         // 右列: レイヤーとプロパティを既定でタブにまとめ、プロパティを前面に
         var right = new DockTabGroup { ActiveIndex = 1 };
@@ -45,18 +46,19 @@ public class EditorDockFactory
     }
 
     // パネル1枚だけの TabGroup（見出し付きで統一的に扱う）。
-    private static DockTabGroup Solo(PanelBase panel, bool canClose = true)
+    private static DockTabGroup Solo(PanelBase panel, bool canClose = true, bool locked = false)
     {
         var g = new DockTabGroup { ActiveIndex = 0 };
-        g.Panes.Add(Pane(panel, canClose));
+        g.Panes.Add(Pane(panel, canClose, locked));
         return g;
     }
 
-    private static DockPane Pane(PanelBase panel, bool canClose = true) => new()
+    private static DockPane Pane(PanelBase panel, bool canClose = true, bool locked = false) => new()
     {
         Id = panel.Id,
         Title = panel.Title,
         Content = panel,
         CanClose = canClose,
+        Locked = locked,
     };
 }

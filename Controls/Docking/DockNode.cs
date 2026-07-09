@@ -61,6 +61,13 @@ public sealed class DockPane
     /// <summary>閉じる操作を許可するか（キャンバス等は false）。</summary>
     public bool CanClose { get; set; }
 
+    /// <summary>
+    /// 固定パネル（Photoshop のドキュメント領域相当）。
+    /// true のパネルはドラッグ/フロート/タブ合流できず、ドロップ先にもならない。
+    /// キャンバスに指定し、パネル群がキャンバスと混ざらないようにする。
+    /// </summary>
+    public bool Locked { get; set; }
+
     /// <summary>所属する TabGroup（ドラッグ元の特定に使う）。</summary>
     public DockTabGroup? Owner { get; set; }
 }
