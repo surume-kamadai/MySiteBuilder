@@ -41,18 +41,25 @@ public class DockArea : Decorator
     // 再ドッキング先の候補（本体側の TabGroup のみ。フロートは対象外）
     private readonly List<(DockTabGroup group, Control content)> _groups = new();
     private readonly Dictionary<FloatWindow, Border> _floatBorders = new();
+    // タブ並べ替え用: グループの見出し行とタブ実体
+    private readonly List<(DockTabGroup group, Control header)> _headers = new();
+    private readonly Dictionary<DockTabGroup, List<(DockPane pane, Control tab)>> _tabControls = new();
 
     // ドラッグ状態
     private DockPane? _pendingPane;
     private DockTabGroup? _pendingGroup;
+    private bool _wholeGroup;          // グループごと移動中（見出しの空き部分を掴んだ）
     private Point _pressPoint;
     private bool _dragging;
     private FloatWindow? _dragFloat;   // ドラッグ元がフロートならそのウィンドウ
     private Vector _floatGrab;         // フロート左上とつかんだ点のオフセット
     private DockTabGroup? _dropTarget;
     private Zone _dropZone;
+    private int _reorderIndex = -1;    // >=0 で同一バー内のタブ並べ替え
+    private DockTabGroup? _reorderGroup;
     private Border? _ghost;
     private Rectangle? _zoneHighlight;
+    private Rectangle? _insertLine;
 
     public static readonly StyledProperty<DockLayout?> LayoutProperty =
         AvaloniaProperty.Register<DockArea, DockLayout?>(nameof(Layout));
@@ -85,6 +92,8 @@ public class DockArea : Decorator
     private void Rebuild()
     {
         _groups.Clear();
+        _headers.Clear();
+        _tabControls.Clear();
         _floatBorders.Clear();
         _floatLayer.Children.Clear();
 
@@ -201,10 +210,46 @@ public class DockArea : Decorator
             Orientation = Orientation.Horizontal,
             Background = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x28)),
         };
+        var tabList = new List<(DockPane pane, Control tab)>();
         for (int i = 0; i < g.Panes.Count; i++)
-            header.Children.Add(BuildTab(g, g.Panes[i], i == g.ActiveIndex));
+        {
+            var tab = BuildTab(g, g.Panes[i], i == g.ActiveIndex);
+            header.Children.Add(tab);
+            tabList.Add((g.Panes[i], tab));
+        }
         Grid.SetRow(header, 0);
         grid.Children.Add(header);
+        _headers.Add((g, header));
+        _tabControls[g] = tabList;
+
+        bool hasLocked = g.Panes.Any(p => p.Locked);
+
+        // 見出しの空き部分を掴む → グループごと移動（#5）。タブは e.Handled で先取りするので
+        // ここへ来るのは空き領域を押した時だけ。固定パネル群は移動不可。
+        if (!hasLocked)
+        {
+            header.PointerPressed += (_, e) =>
+            {
+                if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+                _pressPoint = e.GetPosition(this);
+                _dragging = false;
+                _dragFloat = null;
+                _pendingGroup = g;
+                if (FindFloat(g) is not null)
+                {
+                    // フロートの見出し掴み＝そのフロート（単一）の移動として扱う
+                    _pendingPane = g.Active;
+                    _wholeGroup = false;
+                }
+                else
+                {
+                    _pendingPane = null;
+                    _wholeGroup = true;
+                }
+                e.Pointer.Capture(this);
+                e.Handled = true;
+            };
+        }
 
         var content = new ContentControl { Content = g.Active?.Content };
         Grid.SetRow(content, 1);
@@ -212,7 +257,6 @@ public class DockArea : Decorator
 
         // 固定パネル（キャンバス）を含むグループはドロップ先にしない
         //  → その領域へパネルを落とすとフロート化する（Photoshop のドキュメント領域と同じ扱い）
-        bool hasLocked = g.Panes.Any(p => p.Locked);
         if (trackForDrop && !hasLocked)
             _groups.Add((g, content));
         return grid;
@@ -292,10 +336,12 @@ public class DockArea : Decorator
     // ============================================================
     // ドラッグ&ドロップ（図2）
     // ============================================================
+    private bool HasPending => _pendingPane is not null || _wholeGroup;
+
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        if (_pendingPane is null) return;
+        if (!HasPending) return;
 
         var p = e.GetPosition(this);
         if (!_dragging)
@@ -310,7 +356,7 @@ public class DockArea : Decorator
             }
             else
             {
-                ShowGhost(_pendingPane.Title);   // 本体からのドラッグはゴーストを出す
+                ShowGhost(_wholeGroup ? (_pendingGroup?.Active?.Title ?? "パネル群") : _pendingPane!.Title);
             }
         }
 
@@ -322,17 +368,20 @@ public class DockArea : Decorator
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (_pendingPane is not null)
+        if (HasPending)
         {
             if (_dragging)
             {
-                if (_dropTarget is not null && _dropZone != Zone.None)
+                if (_reorderIndex >= 0 && _reorderGroup is not null)
+                    DoReorder();
+                else if (_dropTarget is not null && _dropZone != Zone.None)
                     DropIntoTree();
                 else
                     FinalizeFloat(e.GetPosition(this));
             }
-            else if (_pendingGroup is not null)
+            else if (!_wholeGroup && _pendingPane is not null && _pendingGroup is not null)
             {
+                // ドラッグせず離した＝タブのクリック → アクティブ切替
                 int idx = _pendingGroup.Panes.IndexOf(_pendingPane);
                 if (idx >= 0) { _pendingGroup.ActiveIndex = idx; Rebuild(); }
             }
@@ -363,6 +412,27 @@ public class DockArea : Decorator
     {
         _dropTarget = null;
         _dropZone = Zone.None;
+        _reorderIndex = -1;
+        _reorderGroup = null;
+
+        // 単一タブを元グループの見出し上でドラッグ → 同一バー内の並べ替え（#6）
+        if (!_wholeGroup && _pendingPane is not null && _pendingGroup is not null && _dragFloat is null)
+        {
+            var hdr = _headers.FirstOrDefault(h => ReferenceEquals(h.group, _pendingGroup));
+            if (hdr.group is not null)
+            {
+                var hr = RectInArea(hdr.header);
+                if (hr is not null && hr.Value.Contains(p))
+                {
+                    _reorderGroup = _pendingGroup;
+                    _reorderIndex = ReorderIndexAt(_pendingGroup, p);
+                    DrawInsertLine(_pendingGroup, hr.Value, _reorderIndex);
+                    HideZoneHighlight();
+                    return;
+                }
+            }
+        }
+        HideInsertLine();
 
         foreach (var (group, content) in _groups)
         {
@@ -374,6 +444,19 @@ public class DockArea : Decorator
             return;
         }
         HideZoneHighlight();
+    }
+
+    // カーソル X からタブの挿入位置を求める。
+    private int ReorderIndexAt(DockTabGroup g, Point p)
+    {
+        if (!_tabControls.TryGetValue(g, out var tabs)) return g.Panes.Count;
+        for (int i = 0; i < tabs.Count; i++)
+        {
+            var r = RectInArea(tabs[i].tab);
+            if (r is null) continue;
+            if (p.X < r.Value.X + r.Value.Width / 2) return i;
+        }
+        return tabs.Count;
     }
 
     private Rect? RectInArea(Control c)
@@ -395,9 +478,28 @@ public class DockArea : Decorator
         return Zone.Center;
     }
 
-    // 本体ツリーへドッキング（中央=タブ合流 / 端=分割）。ドラッグ元は本体でもフロートでも可。
+    // 同一バー内のタブ並べ替え（#6）
+    private void DoReorder()
+    {
+        var g = _reorderGroup;
+        var pane = _pendingPane;
+        if (g is null || pane is null) { return; }
+        int from = g.Panes.IndexOf(pane);
+        int to = _reorderIndex;
+        if (from < 0 || to < 0) return;
+        g.Panes.RemoveAt(from);
+        if (to > from) to--;                    // 取り外し後の添字補正
+        to = Math.Clamp(to, 0, g.Panes.Count);
+        g.Panes.Insert(to, pane);
+        g.ActiveIndex = to;
+        Rebuild();
+    }
+
+    // 本体ツリーへドッキング。グループごと移動(#5)なら DockGroupIntoTree へ委譲。
     private void DropIntoTree()
     {
+        if (_wholeGroup) { DockGroupIntoTree(); return; }
+
         var src = _pendingPane;
         var srcGroup = _pendingGroup;
         if (src is null || srcGroup is null || _dropTarget is null || _dropZone == Zone.None || Layout is null)
@@ -429,11 +531,60 @@ public class DockArea : Decorator
         Rebuild();
     }
 
-    // ドロップ先が本体に無い場合: 本体からのドラッグ→新規フロート化 / フロートの移動→そのまま確定
+    // グループごと本体へドッキング（#5）。移動元グループ(ツリー内)を丸ごと運ぶ。
+    private void DockGroupIntoTree()
+    {
+        var moved = _pendingGroup;
+        if (moved is null || _dropTarget is null || _dropZone == Zone.None || Layout is null) return;
+        if (ReferenceEquals(moved, _dropTarget) || moved.Parent is null) return;  // 自分自身/ルートは不可
+
+        DetachNode(moved);
+
+        if (_dropZone == Zone.Center)
+        {
+            foreach (var pane in moved.Panes.ToList())
+            {
+                pane.Owner = _dropTarget;
+                _dropTarget.Panes.Add(pane);
+            }
+            _dropTarget.ActiveIndex = _dropTarget.Panes.Count - 1;
+        }
+        else
+        {
+            var orient = _dropZone is Zone.Left or Zone.Right ? Orientation.Horizontal : Orientation.Vertical;
+            bool before = _dropZone is Zone.Left or Zone.Top;
+            var split = new DockSplit { Orientation = orient };
+            if (before) { split.Children.Add(moved); split.Children.Add(_dropTarget); }
+            else { split.Children.Add(_dropTarget); split.Children.Add(moved); }
+            split.Proportions.Add(0.5);
+            split.Proportions.Add(0.5);
+            ReplaceNode(_dropTarget, split);
+        }
+
+        Layout.Root = Normalize(Layout.Root);
+        Rebuild();
+    }
+
+    // ツリーからノードを取り外す（親の子リスト・比率から除去）。
+    private static void DetachNode(DockNode n)
+    {
+        var parent = n.Parent;
+        if (parent is null) return;
+        int i = parent.Children.IndexOf(n);
+        if (i >= 0)
+        {
+            parent.Children.RemoveAt(i);
+            if (i < parent.Proportions.Count) parent.Proportions.RemoveAt(i);
+        }
+        n.Parent = null;
+    }
+
+    // ドロップ先が本体に無い場合: フロート移動の確定 / 本体からの引き剥がし→新規フロート化
     private void FinalizeFloat(Point p)
     {
-        if (Layout is null || _pendingPane is null || _pendingGroup is null) return;
+        if (Layout is null) return;
 
+        // フロートの移動 → 位置を確定
         if (_dragFloat is not null)
         {
             ClampFloat(_dragFloat);
@@ -441,8 +592,28 @@ public class DockArea : Decorator
             return;
         }
 
-        var src = _pendingPane;
         var srcGroup = _pendingGroup;
+        if (srcGroup is null) return;
+
+        // グループごとフロート化（#5）
+        if (_wholeGroup)
+        {
+            if (srcGroup.Parent is null) return;  // ルートのみは浮かせない
+            DetachNode(srcGroup);
+            var fwg = new FloatWindow { Group = srcGroup };
+            foreach (var pane in srcGroup.Panes) pane.Owner = srcGroup;
+            fwg.X = p.X - fwg.Width / 2;
+            fwg.Y = p.Y - 14;
+            ClampFloat(fwg);
+            Layout.Floats.Add(fwg);
+            Layout.Root = Normalize(Layout.Root);
+            Rebuild();
+            return;
+        }
+
+        // 単一パネルの引き剥がし → 新規フロート
+        var src = _pendingPane;
+        if (src is null) return;
         srcGroup.Panes.Remove(src);
         if (srcGroup.ActiveIndex >= srcGroup.Panes.Count)
             srcGroup.ActiveIndex = srcGroup.Panes.Count - 1;
@@ -641,17 +812,53 @@ public class DockArea : Decorator
             _overlay.Children.Remove(_zoneHighlight);
     }
 
+    // タブ並べ替えの挿入位置を示す縦線（#6）
+    private void DrawInsertLine(DockTabGroup g, Rect headerRect, int index)
+    {
+        if (!_tabControls.TryGetValue(g, out var tabs) || tabs.Count == 0) { HideInsertLine(); return; }
+
+        double x;
+        if (index < tabs.Count)
+            x = RectInArea(tabs[index].tab)?.X ?? headerRect.X;
+        else
+            x = RectInArea(tabs[^1].tab)?.Right ?? headerRect.Right;
+
+        _insertLine ??= new Rectangle
+        {
+            Fill = new SolidColorBrush(Color.FromRgb(0x1E, 0x90, 0xFF)),
+            IsHitTestVisible = false,
+        };
+        if (!_overlay.Children.Contains(_insertLine))
+            _overlay.Children.Add(_insertLine);
+
+        _insertLine.Width = 2;
+        _insertLine.Height = headerRect.Height;
+        Canvas.SetLeft(_insertLine, x - 1);
+        Canvas.SetTop(_insertLine, headerRect.Y);
+    }
+
+    private void HideInsertLine()
+    {
+        if (_insertLine is not null)
+            _overlay.Children.Remove(_insertLine);
+    }
+
     private void ClearDrag(PointerReleasedEventArgs e)
     {
         _pendingPane = null;
         _pendingGroup = null;
+        _wholeGroup = false;
         _dragging = false;
         _dragFloat = null;
         _dropTarget = null;
         _dropZone = Zone.None;
+        _reorderIndex = -1;
+        _reorderGroup = null;
         if (_ghost is not null) { _overlay.Children.Remove(_ghost); _ghost = null; }
         HideZoneHighlight();
+        HideInsertLine();
         _zoneHighlight = null;
+        _insertLine = null;
         e.Pointer.Capture(null);
     }
 
