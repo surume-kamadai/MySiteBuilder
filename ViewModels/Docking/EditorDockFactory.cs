@@ -16,7 +16,7 @@ public class EditorDockFactory
 
     public EditorDockFactory(MainWindowViewModel editor) => _editor = editor;
 
-    public DockNode CreateLayout()
+    public DockLayout CreateLayout()
     {
         var tools = Solo(new ToolsPanel(_editor), canClose: false);
         var canvas = Solo(new CanvasPanel(_editor), canClose: false);
@@ -41,7 +41,7 @@ public class EditorDockFactory
         root.Children.Add(centerRow);
         root.Proportions.Add(0.08);
         root.Proportions.Add(0.92);
-        return root;
+        return new DockLayout { Root = root };
     }
 
     // パネル1枚だけの TabGroup（見出し付きで統一的に扱う）。

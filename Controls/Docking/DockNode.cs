@@ -64,3 +64,25 @@ public sealed class DockPane
     /// <summary>所属する TabGroup（ドラッグ元の特定に使う）。</summary>
     public DockTabGroup? Owner { get; set; }
 }
+
+/// <summary>ドックから切り離した浮遊パネル（メインウィンドウ内に重ねて表示する管理フロート）。</summary>
+public sealed class FloatWindow
+{
+    /// <summary>浮遊させたパネル群（v1 は基本1枚）。</summary>
+    public DockTabGroup Group { get; set; } = new();
+
+    public double X { get; set; }
+    public double Y { get; set; }
+    public double Width { get; set; } = 260;
+    public double Height { get; set; } = 320;
+}
+
+/// <summary>レイアウト全体（ドック本体のツリー＋浮遊パネル群）。DockArea にバインドする単位。</summary>
+public sealed class DockLayout
+{
+    /// <summary>ドック本体のツリーのルート。</summary>
+    public DockNode? Root { get; set; }
+
+    /// <summary>切り離された浮遊パネル群。</summary>
+    public List<FloatWindow> Floats { get; } = new();
+}
