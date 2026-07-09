@@ -32,6 +32,8 @@ public class DockArea : Decorator
     private const double DragThreshold = 5;
     private const double EdgeRatio = 0.25;
     private const double SplitterSize = 6;
+    private const double FrameEdge = 24;      // 外縁ドックと判定する枠からの距離
+    private const double FrameProp = 0.2;      // 外縁ドックした新パネルの比率
 
     private readonly Grid _rootGrid = new();
     private readonly ContentControl _host = new();
@@ -55,6 +57,7 @@ public class DockArea : Decorator
     private Vector _floatGrab;         // フロート左上とつかんだ点のオフセット
     private DockTabGroup? _dropTarget;
     private Zone _dropZone;
+    private Zone _frameZone;           // 外縁ドック（アプリ枠の端）(#8)
     private int _reorderIndex = -1;    // >=0 で同一バー内のタブ並べ替え
     private DockTabGroup? _reorderGroup;
     private Border? _ghost;
@@ -374,6 +377,8 @@ public class DockArea : Decorator
             {
                 if (_reorderIndex >= 0 && _reorderGroup is not null)
                     DoReorder();
+                else if (_frameZone != Zone.None)
+                    DockAtFrame();
                 else if (_dropTarget is not null && _dropZone != Zone.None)
                     DropIntoTree();
                 else
@@ -412,6 +417,7 @@ public class DockArea : Decorator
     {
         _dropTarget = null;
         _dropZone = Zone.None;
+        _frameZone = Zone.None;
         _reorderIndex = -1;
         _reorderGroup = null;
 
@@ -434,6 +440,14 @@ public class DockArea : Decorator
         }
         HideInsertLine();
 
+        // 外縁ドック（アプリ枠の端に寄せる）(#8)。個別パネルより優先。
+        _frameZone = FrameZoneAt(p);
+        if (_frameZone != Zone.None)
+        {
+            DrawFrameHighlight(_frameZone);
+            return;
+        }
+
         foreach (var (group, content) in _groups)
         {
             var rect = RectInArea(content);
@@ -444,6 +458,34 @@ public class DockArea : Decorator
             return;
         }
         HideZoneHighlight();
+    }
+
+    // カーソルが DockArea の外縁付近ならその辺を返す（枠内は None）。
+    private Zone FrameZoneAt(Point p)
+    {
+        double w = Bounds.Width, h = Bounds.Height;
+        if (w <= 0 || h <= 0) return Zone.None;
+        if (p.X >= 0 && p.X < FrameEdge) return Zone.Left;
+        if (p.X <= w && p.X > w - FrameEdge) return Zone.Right;
+        if (p.Y >= 0 && p.Y < FrameEdge) return Zone.Top;
+        if (p.Y <= h && p.Y > h - FrameEdge) return Zone.Bottom;
+        return Zone.None;
+    }
+
+    private void DrawFrameHighlight(Zone zone)
+    {
+        double w = Bounds.Width, h = Bounds.Height;
+        double sw = Math.Min(w * EdgeRatio, 200);
+        double sh = Math.Min(h * EdgeRatio, 200);
+        Rect strip = zone switch
+        {
+            Zone.Left => new Rect(0, 0, sw, h),
+            Zone.Right => new Rect(w - sw, 0, sw, h),
+            Zone.Top => new Rect(0, 0, w, sh),
+            Zone.Bottom => new Rect(0, h - sh, w, sh),
+            _ => new Rect(0, 0, w, h),
+        };
+        ShowHighlight(strip);
     }
 
     // カーソル X からタブの挿入位置を求める。
@@ -563,6 +605,67 @@ public class DockArea : Decorator
 
         Layout.Root = Normalize(Layout.Root);
         Rebuild();
+    }
+
+    // 外縁ドック（アプリ枠の端に全長で配置）(#8)。ルート全体を新しい分割で包む。
+    private void DockAtFrame()
+    {
+        if (Layout?.Root is null || _frameZone == Zone.None) return;
+
+        var node = ExtractDragged();
+        if (node is null) return;
+
+        var root = Layout.Root;
+        if (root is null) { Layout.Root = node; Rebuild(); return; }
+
+        var orient = _frameZone is Zone.Left or Zone.Right ? Orientation.Horizontal : Orientation.Vertical;
+        bool before = _frameZone is Zone.Left or Zone.Top;
+
+        var split = new DockSplit { Orientation = orient };
+        if (before)
+        {
+            split.Children.Add(node);
+            split.Children.Add(root);
+            split.Proportions.Add(FrameProp);
+            split.Proportions.Add(1 - FrameProp);
+        }
+        else
+        {
+            split.Children.Add(root);
+            split.Children.Add(node);
+            split.Proportions.Add(1 - FrameProp);
+            split.Proportions.Add(FrameProp);
+        }
+
+        Layout.Root = Normalize(split);
+        Rebuild();
+    }
+
+    // ドラッグ中のパネル/グループを元の場所から取り外し、挿入できる 1 ノードにして返す。
+    private DockNode? ExtractDragged()
+    {
+        if (Layout is null) return null;
+
+        if (_wholeGroup)
+        {
+            var g = _pendingGroup;
+            if (g is null || g.Parent is null) return null;   // ルートは対象外
+            DetachNode(g);
+            return g;
+        }
+
+        var src = _pendingPane;
+        var sg = _pendingGroup;
+        if (src is null || sg is null) return null;
+        sg.Panes.Remove(src);
+        if (sg.ActiveIndex >= sg.Panes.Count) sg.ActiveIndex = sg.Panes.Count - 1;
+        if (_dragFloat is not null) Layout.Floats.Remove(_dragFloat);
+
+        var ng = new DockTabGroup();
+        ng.Panes.Add(src);
+        ng.ActiveIndex = 0;
+        src.Owner = ng;
+        return ng;
     }
 
     // ツリーからノードを取り外す（親の子リスト・比率から除去）。
@@ -788,6 +891,11 @@ public class DockArea : Decorator
             _ => r,
         };
 
+        ShowHighlight(hi);
+    }
+
+    private void ShowHighlight(Rect hi)
+    {
         _zoneHighlight ??= NewHighlight();
         if (!_overlay.Children.Contains(_zoneHighlight))
             _overlay.Children.Add(_zoneHighlight);
@@ -852,6 +960,7 @@ public class DockArea : Decorator
         _dragFloat = null;
         _dropTarget = null;
         _dropZone = Zone.None;
+        _frameZone = Zone.None;
         _reorderIndex = -1;
         _reorderGroup = null;
         if (_ghost is not null) { _overlay.Children.Remove(_ghost); _ghost = null; }
