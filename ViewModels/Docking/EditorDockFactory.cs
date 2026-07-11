@@ -5,8 +5,9 @@ namespace MySiteBuilder.ViewModels.Docking;
 
 // ============================================================
 // 初期レイアウト（DockNode ツリー）の組み立て。
-//   上段: ページ
-//   下段: [ツール(左)] | [キャンバス(中央)] | [レイヤー/プロパティ タブ(右)]
+//   左列: [ツール(上)] / [ページ エクスプローラー(下)]（縦に積む）
+//   中央: キャンバス
+//   右列: レイヤー/プロパティ タブ
 //   自作ドッキングエンジン(DockArea)がこのツリーを描画し、
 //   以降はユーザーがドラッグで自由に組み替える。
 // ============================================================
@@ -19,29 +20,30 @@ public class EditorDockFactory
     public DockLayout CreateLayout()
     {
         var tools = Solo(new ToolsPanel(_editor), canClose: false);
+        var pages = Solo(new PagesPanel(_editor), canClose: false);
         // キャンバスは固定パネル（ドキュメント領域相当）。ドラッグ/タブ化/フロート不可・ドロップ先にもならない。
         var canvas = Solo(new CanvasPanel(_editor), canClose: false, locked: true);
+
+        // 左列: ツール(上) ＋ ページ エクスプローラー(下) を縦に積む
+        var leftColumn = new DockSplit { Orientation = Orientation.Vertical };
+        leftColumn.Children.Add(tools);
+        leftColumn.Children.Add(pages);
+        leftColumn.Proportions.Add(0.55);
+        leftColumn.Proportions.Add(0.45);
 
         // 右列: レイヤーとプロパティを既定でタブにまとめ、プロパティを前面に
         var right = new DockTabGroup { ActiveIndex = 1 };
         right.Panes.Add(Pane(new ExplorerPanel(_editor)));
         right.Panes.Add(Pane(new InspectorPanel(_editor)));
 
-        var centerRow = new DockSplit { Orientation = Orientation.Horizontal };
-        centerRow.Children.Add(tools);
-        centerRow.Children.Add(canvas);
-        centerRow.Children.Add(right);
-        centerRow.Proportions.Add(0.18);
-        centerRow.Proportions.Add(0.60);
-        centerRow.Proportions.Add(0.22);
+        var root = new DockSplit { Orientation = Orientation.Horizontal };
+        root.Children.Add(leftColumn);
+        root.Children.Add(canvas);
+        root.Children.Add(right);
+        root.Proportions.Add(0.18);
+        root.Proportions.Add(0.60);
+        root.Proportions.Add(0.22);
 
-        var pages = Solo(new PagesPanel(_editor), canClose: false);
-
-        var root = new DockSplit { Orientation = Orientation.Vertical };
-        root.Children.Add(pages);
-        root.Children.Add(centerRow);
-        root.Proportions.Add(0.08);
-        root.Proportions.Add(0.92);
         return new DockLayout { Root = root };
     }
 
