@@ -1,6 +1,10 @@
+using System;
+using System.Linq;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using MySiteBuilder.Core.Models;
 using MySiteBuilder.ViewModels;
 
@@ -14,6 +18,84 @@ public partial class MainWindow : Window
     }
 
     private MainWindowViewModel? Vm => DataContext as MainWindowViewModel;
+
+    // ============================================================
+    // エクスプローラーのドラッグ&ドロップ並べ替え（レイヤー / ページ）
+    //   ListBox の Loaded で D&D を仕込み、項目をドラッグして順序を入れ替える。
+    // ============================================================
+    private const string LayerFormat = "ksb.layer";
+    private const string PageFormat = "ksb.page";
+    private const double DndThreshold = 5;
+
+    private object? _dndItem;      // ドラッグ中の要素/ページ
+    private string? _dndFormat;
+    private Point _dndStart;
+    private bool _dndActive;
+
+    private void OnLayerListLoaded(object? sender, RoutedEventArgs e) => SetupExplorerDnd(sender, LayerFormat);
+    private void OnPageListLoaded(object? sender, RoutedEventArgs e) => SetupExplorerDnd(sender, PageFormat);
+
+    private void SetupExplorerDnd(object? sender, string format)
+    {
+        if (sender is not Control c || DragDrop.GetAllowDrop(c)) return;   // 二重登録防止
+        DragDrop.SetAllowDrop(c, true);
+        // ListBox の選択処理に負けないよう handledEventsToo で確実に拾う
+        c.AddHandler(PointerPressedEvent, (_, ev) => RecordDrag(ev, format),
+            Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        c.AddHandler(PointerMovedEvent, (_, ev) => TryStartDrag(ev, format),
+            Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        c.AddHandler(DragDrop.DragOverEvent, (_, ev) =>
+        {
+            ev.DragEffects = ev.Data.Contains(format) ? DragDropEffects.Move : DragDropEffects.None;
+            ev.Handled = true;
+        });
+        c.AddHandler(DragDrop.DropEvent, (_, ev) => OnExplorerDrop(ev, format));
+    }
+
+    private void RecordDrag(PointerPressedEventArgs e, string format)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) { _dndItem = null; return; }
+        _dndItem = AncestorItemData(e.Source);
+        _dndFormat = format;
+        _dndStart = e.GetPosition(this);
+        _dndActive = false;
+    }
+
+    private async void TryStartDrag(PointerEventArgs e, string format)
+    {
+        if (_dndItem is null || _dndFormat != format || _dndActive) return;
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) { _dndItem = null; return; }
+        if (Dist(e.GetPosition(this), _dndStart) < DndThreshold) return;
+
+        _dndActive = true;
+        var data = new DataObject();
+        data.Set(format, _dndItem);
+        try { await DragDrop.DoDragDrop(e, data, DragDropEffects.Move); }
+        finally { _dndItem = null; _dndFormat = null; _dndActive = false; }
+    }
+
+    private void OnExplorerDrop(DragEventArgs e, string format)
+    {
+        var vm = Vm;
+        if (vm is null) return;
+        var dragged = e.Data.Get(format);
+        var target = AncestorItemData(e.Source);
+        if (format == LayerFormat && dragged is SiteElement de)
+            vm.MoveElement(de, target as SiteElement);
+        else if (format == PageFormat && dragged is SitePage dp)
+            vm.MovePage(dp, target as SitePage);
+        e.Handled = true;
+    }
+
+    // ポインタ直下の ListBoxItem の DataContext（要素/ページ）を取り出す。
+    private static object? AncestorItemData(object? source) =>
+        (source as Visual)?.GetSelfAndVisualAncestors().OfType<ListBoxItem>().FirstOrDefault()?.DataContext;
+
+    private static double Dist(Point a, Point b)
+    {
+        double dx = a.X - b.X, dy = a.Y - b.Y;
+        return Math.Sqrt(dx * dx + dy * dy);
+    }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {

@@ -62,6 +62,7 @@
                     </WrapPanel>
                     <ListBox Grid.Row="2" ItemsSource="{Binding ExplorerItems}"
                              SelectedItem="{Binding ExplorerSelected, Mode=TwoWay}"
+                             Loaded="OnLayerListLoaded"
                              Background="#26262A" Margin="0,4,0,0">
                         <ListBox.Styles>
                             <!-- 行の余白・角丸・選択/ホバーの見やすさ -->
@@ -127,6 +128,7 @@
                     <!-- ページ一覧（縦リスト・選択ハイライト） -->
                     <ListBox Grid.Row="1" ItemsSource="{Binding PageTabs}"
                              SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
+                             Loaded="OnPageListLoaded"
                              Background="#26262A" Margin="0,4">
                         <ListBox.Styles>
                             <Style Selector="ListBoxItem">

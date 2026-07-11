@@ -229,7 +229,9 @@ public class MainWindowViewModel : ViewModelBase
 
     // --- エクスプローラー（要素一覧） ---
 
-    public IReadOnlyList<SiteElement> ExplorerItems => ActivePage.Elements;
+    // コピーを返すことで、並べ替え時に NotifyExplorer で ListBox が実際に並び替わる
+    // （同一リスト参照だと ItemsSource が更新を検知しないため）。
+    public IReadOnlyList<SiteElement> ExplorerItems => ActivePage.Elements.ToList();
 
     /// <summary>一覧の選択（ListBoxのSelectedItemと双方向。プライマリと同期）。</summary>
     public SiteElement? ExplorerSelected
@@ -316,6 +318,44 @@ public class MainWindowViewModel : ViewModelBase
         op(list);
         NotifyExplorer();
         RedrawRequested?.Invoke();
+    }
+
+    /// <summary>レイヤー一覧のドラッグ&ドロップ並べ替え。target の位置へ dragged を移動。</summary>
+    public void MoveElement(SiteElement dragged, SiteElement? target)
+    {
+        var list = ContainingList(dragged);
+        if (list == null) return;
+        int di = list.IndexOf(dragged);
+        if (di < 0) return;
+        // ターゲットが同じリストに無ければ末尾へ
+        int ti = target != null && list.Contains(target) ? list.IndexOf(target) : list.Count;
+        if (di == ti) return;
+
+        PushUndo();
+        list.RemoveAt(di);
+        ti = target != null && list.Contains(target) ? list.IndexOf(target) : list.Count;
+        if (ti < 0) ti = list.Count;
+        list.Insert(ti, dragged);
+        Select(dragged);
+        NotifyExplorer();
+        RedrawRequested?.Invoke();
+    }
+
+    /// <summary>ページ一覧のドラッグ&ドロップ並べ替え。target の位置へ dragged を移動。</summary>
+    public void MovePage(SitePage dragged, SitePage? target)
+    {
+        var list = _project.Pages;
+        int di = list.IndexOf(dragged);
+        if (di < 0) return;
+        int ti = target != null && list.Contains(target) ? list.IndexOf(target) : list.Count;
+        if (di == ti) return;
+
+        PushUndo();
+        list.RemoveAt(di);
+        ti = target != null && list.Contains(target) ? list.IndexOf(target) : list.Count;
+        if (ti < 0) ti = list.Count;
+        list.Insert(ti, dragged);
+        RebuildPageTabs();
     }
 
     // 要素を含むリスト（トップレベル or 親Groupのchildren）
