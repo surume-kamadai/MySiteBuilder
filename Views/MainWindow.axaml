@@ -106,40 +106,66 @@
             </Grid>
         </DataTemplate>
 
-        <!-- ページ（ページタブ＋フォルダ）パネル -->
+        <!-- ページ（縦並びのエクスプローラー） -->
         <DataTemplate DataType="dock:PagesPanel">
-            <ScrollViewer DataContext="{Binding Editor}" HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Disabled" Background="#1F1F22">
-                <StackPanel x:DataType="vm:MainWindowViewModel" Orientation="Horizontal" Spacing="6" Margin="6,4">
-                    <TextBlock Text="ページ:" Foreground="#BBBBBB" VerticalAlignment="Center" Margin="2,0,4,0"/>
-                    <ListBox ItemsSource="{Binding PageTabs}"
+            <Grid DataContext="{Binding Editor}" Background="#2D2D30">
+                <Grid x:DataType="vm:MainWindowViewModel" Margin="8,6" RowDefinitions="Auto,*,Auto">
+                    <!-- 追加/削除ツールバー -->
+                    <WrapPanel Grid.Row="0">
+                        <WrapPanel.Styles>
+                            <Style Selector="Button.p">
+                                <Setter Property="Margin" Value="0,0,3,3"/>
+                                <Setter Property="Padding" Value="6,3"/>
+                                <Setter Property="FontSize" Value="11"/>
+                            </Style>
+                        </WrapPanel.Styles>
+                        <Button Classes="p" Click="OnAddPageClick">＋ ページ</Button>
+                        <Button Classes="p" Click="OnAddFolderClick">＋ フォルダ</Button>
+                        <Button Classes="p" Click="OnDeletePageClick" IsEnabled="{Binding CanDeletePage}">🗑 削除</Button>
+                    </WrapPanel>
+
+                    <!-- ページ一覧（縦リスト・選択ハイライト） -->
+                    <ListBox Grid.Row="1" ItemsSource="{Binding PageTabs}"
                              SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
-                             Background="Transparent" BorderThickness="0" Padding="0"
-                             VerticalAlignment="Center">
-                        <ListBox.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal"/>
-                            </ItemsPanelTemplate>
-                        </ListBox.ItemsPanel>
+                             Background="#26262A" Margin="0,4">
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="2,1"/>
+                                <Setter Property="MinHeight" Value="0"/>
+                            </Style>
+                            <Style Selector="ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+                                <Setter Property="CornerRadius" Value="4"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                                <Setter Property="Background" Value="#33FFFFFF"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+                                <Setter Property="Background" Value="#0E639C"/>
+                            </Style>
+                        </ListBox.Styles>
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="models:SitePage">
-                                <TextBlock Text="{Binding Name}" Padding="10,4"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="6,5">
+                                    <TextBlock Text="📄" FontSize="14" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Name}" Foreground="#F0F0F0" FontSize="13"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <Button Click="OnAddPageClick" Padding="8,4">＋ ページ</Button>
-                    <Border Width="1" Background="#444" Margin="4,2"/>
-                    <TextBlock Text="名前:" Foreground="#BBBBBB" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding ActivePageName}" Width="130" VerticalAlignment="Center"/>
-                    <Button Click="OnDeletePageClick" IsEnabled="{Binding CanDeletePage}" Padding="8,4">🗑 ページ削除</Button>
-                    <Border Width="1" Background="#444" Margin="4,2"/>
-                    <TextBlock Text="フォルダ:" Foreground="#BBBBBB" VerticalAlignment="Center"/>
-                    <ComboBox ItemsSource="{Binding FolderNames}"
-                              SelectedItem="{Binding ActivePageFolderName, Mode=TwoWay}"
-                              MinWidth="110" VerticalAlignment="Center"/>
-                    <Button Click="OnAddFolderClick" Padding="8,4">＋ フォルダ</Button>
-                </StackPanel>
-            </ScrollViewer>
+
+                    <!-- 選択ページの設定（名前・フォルダ） -->
+                    <StackPanel Grid.Row="2" Spacing="2">
+                        <TextBlock Text="ページ名" Foreground="#BBBBBB" FontSize="11" Margin="0,4,0,0"/>
+                        <TextBox Text="{Binding ActivePageName}" Padding="6,4"/>
+                        <TextBlock Text="フォルダ" Foreground="#BBBBBB" FontSize="11" Margin="0,4,0,0"/>
+                        <ComboBox ItemsSource="{Binding FolderNames}"
+                                  SelectedItem="{Binding ActivePageFolderName, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
         </DataTemplate>
 
         <!-- キャンバス（ドキュメント）パネル -->
