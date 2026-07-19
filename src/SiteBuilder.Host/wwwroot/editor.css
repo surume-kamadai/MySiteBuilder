@@ -1,0 +1,465 @@
+/* RGBAカラーピッカーのスウォッチ（クリックでポップアップ） */
+.color-field {
+    display: block;
+    width: 100%;
+    height: 26px;
+    border: 1px solid #555;
+    border-radius: 3px;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+    background: #000000;
+    box-sizing: border-box;
+}
+.color-field:hover { border-color: #00a8ff; }
+
+/* ============================================================
+   エディタ全体レイアウト
+   ============================================================ */
+html, body {
+    width: 100%;
+    height: 100%;
+}
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #282828;
+    font-family: 'Segoe UI', sans-serif;
+    color: #e0e0e0;
+    overflow: hidden;
+}
+
+.workspace {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    background-color: #1e1e1e;
+}
+
+#canvas-area {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    overflow: auto;
+    display: flex;
+    padding: 60px;
+    box-sizing: border-box;
+}
+
+#canvas-wrapper {
+    background-color: #ffffff;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+    margin: auto;
+    transform-origin: center center;
+    flex-shrink: 0;
+    position: relative;  /* ガイドラインをこの中に収める */
+    overflow: hidden;    /* ガイドラインがはみ出してもスクロールバーを出さない */
+}
+
+/* ============================================================
+   フローティングパネル
+   ============================================================ */
+.floating-panel {
+    position: absolute;
+    background-color: #333333;
+    border: 1px solid #444;
+    border-radius: 4px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    /* リサイズ可能にする（最小・最大サイズで暴走を防ぐ） */
+    resize: both;
+    overflow: hidden;
+    min-width: 140px;
+    min-height: 60px;
+    max-width: 90vw;
+    max-height: 90vh;
+}
+
+/* 折りたたみ状態: ヘッダーだけ表示 */
+.floating-panel.collapsed {
+    resize: none;
+    min-height: 0;
+    height: auto !important;
+}
+.floating-panel.collapsed .panel-content {
+    display: none;
+}
+
+.panel-header {
+    padding: 8px 10px;
+    background-color: #252526;
+    cursor: move;
+    border-radius: 4px 4px 0 0;
+    font-size: 12px;
+    font-weight: bold;
+    color: #ccc;
+    user-select: none;
+    border-bottom: 1px solid #1e1e1e;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+/* ヘッダー右側の折りたたみボタン */
+.panel-collapse-btn {
+    width: 18px;
+    height: 18px;
+    line-height: 16px;
+    text-align: center;
+    background: #3a3a3a;
+    border: 1px solid #555;
+    border-radius: 3px;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 10px;
+    margin: 0;
+    padding: 0;
+    flex-shrink: 0;
+}
+.panel-collapse-btn:hover {
+    background: #4a4a4a;
+}
+
+.panel-content {
+    padding: 12px;
+    font-size: 12px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* リサイズハンドルを見やすくする装飾（右下） */
+.floating-panel::after {
+    content: '';
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+    background:
+        linear-gradient(135deg, transparent 50%, #777 50%, #777 60%, transparent 60%),
+        linear-gradient(135deg, transparent 70%, #777 70%, #777 80%, transparent 80%);
+    opacity: 0.8;
+}
+.floating-panel.collapsed::after {
+    display: none;
+}
+
+/* ============================================================
+   golden-layout ペイン統合
+   ============================================================ */
+#gl-root {
+    position: absolute;
+    top: 70px;     /* デバイス切替バーの下 */
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+/* ペイン内に移植された panel-content の調整 */
+.lm_content .panel-content {
+    border: none;
+    background: transparent;
+    max-height: none;
+    height: auto;
+}
+
+/* キャンバスペイン内のラッパー */
+.lm_content #canvas-area {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* golden-layout のダークテーマ微調整 */
+.lm_goldenlayout { background: #1e1e1e; }
+.lm_content { background: #333333; }
+.snap-guide {
+    position: fixed;
+    background: #007acc;
+    z-index: 9998;
+    pointer-events: none;
+    opacity: 0.8;
+}
+.snap-guide.horizontal { height: 2px; }
+.snap-guide.vertical   { width: 2px; }
+
+.dock-zone-highlight {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: 300px;
+    background: rgba(0, 122, 204, 0.15);
+    border: 2px dashed #007acc;
+    z-index: 9997;
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+/* ============================================================
+   フォームコントロール
+   ============================================================ */
+.form-group {
+    margin-bottom: 10px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 11px;
+    margin-bottom: 3px;
+    color: #aaa;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 5px;
+    box-sizing: border-box;
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.row {
+    display: flex;
+    gap: 5px;
+}
+
+.row .form-group {
+    flex: 1;
+}
+
+/* ============================================================
+   ボタン
+   ============================================================ */
+button {
+    padding: 6px 10px;
+    cursor: pointer;
+    background-color: #444;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-size: 12px;
+    width: 100%;
+    text-align: left;
+    margin-bottom: 5px;
+}
+
+button:hover {
+    background-color: #555;
+}
+
+.btn-primary {
+    background-color: #007acc;
+    border-color: #007acc;
+    text-align: center;
+    font-weight: bold;
+}
+.btn-primary:hover { background-color: #005f9e; }
+
+.btn-danger {
+    background-color: #cc4545;
+    border-color: #cc4545;
+    text-align: center;
+    font-weight: bold;
+}
+.btn-danger:hover { background-color: #a83636; }
+
+.btn-success {
+    background-color: #27ae60;
+    border-color: #27ae60;
+    text-align: center;
+    font-weight: bold;
+}
+.btn-success:hover { background-color: #219653; }
+
+.btn-action {
+    text-align: center;
+    padding: 4px;
+    font-size: 11px;
+}
+
+/* ============================================================
+   レイヤーエクスプローラー
+   ============================================================ */
+.layer-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px;
+    background-color: #2d2d2d;
+    border: 1px solid #444;
+    margin-bottom: 4px;
+    border-radius: 3px;
+    cursor: grab;
+    transition: background-color 0.1s;
+}
+
+.layer-item:hover          { background-color: #3d3d3d; }
+.layer-item.active         { background-color: #094771; border-color: #007acc; }
+.layer-item.drag-over      { border-top: 2px solid #00a8ff; }
+.layer-item.drag-over-group {
+    background-color: rgba(0, 168, 255, 0.2);
+    border: 2px dashed #00a8ff;
+}
+
+.layer-name {
+    flex: 1;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: none;
+    pointer-events: none;
+}
+
+/* ============================================================
+   ページパネル
+   ============================================================ */
+.page-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 8px;
+    background-color: #2d2d2d;
+    border: 1px solid #444;
+    margin-bottom: 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.page-item:hover  { background-color: #3d3d3d; }
+.page-item.active { background-color: #094771; border-color: #007acc; }
+
+.page-name {
+    flex: 1;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.page-del {
+    width: auto;
+    margin: 0;
+    padding: 1px 7px;
+    font-size: 13px;
+    line-height: 1;
+    background-color: transparent;
+    border: none;
+    color: #aaa;
+}
+.page-del:hover { color: #ff6b6b; background-color: transparent; }
+
+/* ページ名のインライン編集入力 */
+.page-rename-input {
+    flex: 1;
+    width: auto;
+    margin: 0;
+    padding: 2px 4px;
+    font-size: 12px;
+    background-color: #1e1e1e;
+    color: #fff;
+    border: 1px solid #007acc;
+    border-radius: 2px;
+}
+
+/* ページ編集ボタン（✎） */
+.page-edit {
+    width: auto;
+    margin: 0 2px 0 0;
+    padding: 1px 6px;
+    font-size: 12px;
+    line-height: 1;
+    background-color: transparent;
+    border: none;
+    color: #aaa;
+}
+.page-edit:hover { color: #00a8ff; background-color: transparent; }
+
+/* ============================================================
+   エクスプローラー・ページパネル 共通ボタン（統一）
+   ============================================================ */
+.layer-edit, .layer-del {
+    width: auto;
+    margin: 0 0 0 2px;
+    padding: 1px 6px;
+    font-size: 12px;
+    line-height: 1;
+    background-color: transparent;
+    border: none;
+    color: #aaa;
+}
+.layer-edit:hover { color: #00a8ff; background-color: transparent; }
+.layer-del:hover  { color: #ff6b6b; background-color: transparent; }
+
+/* レイヤー名のインライン編集入力 */
+.layer-rename-input {
+    flex: 1;
+    width: auto;
+    margin: 0;
+    padding: 2px 4px;
+    font-size: 12px;
+    background-color: #1e1e1e;
+    color: #fff;
+    border: 1px solid #007acc;
+    border-radius: 2px;
+}
+
+/* ページ並び替えD&Dのドロップ位置表示 */
+.page-item.drag-over { border-top: 2px solid #00a8ff; }
+
+/* ============================================================
+   ページフォルダ
+   ============================================================ */
+.folder-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    background-color: #252526;
+    border: 1px solid #3a3a3a;
+    margin-bottom: 4px;
+    border-radius: 3px;
+}
+.folder-item.drag-over-group {
+    background-color: rgba(0, 168, 255, 0.2);
+    border: 2px dashed #00a8ff;
+}
+.folder-name {
+    flex: 1;
+    font-size: 12px;
+    font-weight: bold;
+    color: #ddd;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* ============================================================
+   スマートガイド (スナップ用の整列補助線)
+   ============================================================ */
+.snap-guideline {
+    position: absolute;  /* canvas-wrapper内に固定 */
+    background-color: #ff4757;
+    z-index: 9998;
+    pointer-events: none;
+    display: none;
+}
+.snap-guideline.vertical {
+    width: 1px;
+    top: 0;
+    height: 100%;
+}
+.snap-guideline.horizontal {
+    height: 1px;
+    left: 0;
+    width: 100%;
+} 
