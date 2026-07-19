@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- セキュリティ: スクリプトはローカル同梱(vendor/)のみ実行を許可し、外部からのコード読込を遮断。
+         フォントのみ Google Fonts を明示許可（表示用。実行コードではない）。 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'">
+    <title>Site Builder</title>
+    <!-- エディタ用ライブラリ（ローカル同梱: scripts/copy-vendor.mjs で node_modules から生成） -->
+    <script src="vendor/konva.min.js"></script>
+    <!-- ドッキングUI: jQuery + golden-layout v1 -->
+    <script src="vendor/jquery.min.js"></script>
+    <link rel="stylesheet" href="vendor/goldenlayout-base.css" />
+    <link rel="stylesheet" href="vendor/goldenlayout-dark-theme.css" />
+    <script src="vendor/goldenlayout.min.js"></script>
+    <link rel="stylesheet" href="editor.css">
+    <!-- 日本語Webフォント(Google Fonts) — エディタ表示用（オフライン時はシステムフォントにフォールバック） -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=M+PLUS+Rounded+1c:wght@400;700&family=Kosugi+Maru&family=Sawarabi+Mincho&family=Zen+Maru+Gothic:wght@400;700&family=Yusei+Magic&family=Dela+Gothic+One&display=swap" rel="stylesheet">
+    <!-- カラーピッカー(Pickr): 色相＋SV＋透明度(A)が一体のポップアップ -->
+    <link rel="stylesheet" href="vendor/pickr-nano.min.css"/>
+    <script src="vendor/pickr.min.js"></script>
+</head>
+<body>
+    <div class="workspace" id="workspace">
+        <!-- デバイス -->
+        <div style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; gap: 10px; background: #333; padding: 5px 15px; border-radius: 20px; border: 1px solid #555; box-shadow: 0 4px 10px rgba(0,0,0,0.5); align-items: center;">
+            <button id="btn-device-pc" onclick="switchDevice('pc')" style="background: none; border: none; font-size: 14px; padding: 4px 8px; opacity: 1; margin: 0; width: auto; font-weight:bold;" title="PC表示">💻 PC</button>
+            <button id="btn-device-mobile" onclick="switchDevice('mobile')" style="background: none; border: none; font-size: 14px; padding: 4px 8px; opacity: 0.4; margin: 0; width: auto; font-weight:bold;" title="スマホ表示">📱 Mobile</button>
+            <div style="width: 1px; height: 20px; background: #666; margin: 0 5px;"></div>
+            <button onclick="toggleRulers()" style="background: none; border: none; font-size: 14px; padding: 4px 8px; margin: 0; width: auto; font-weight:bold; color:#fff;" title="定規・ガイドの表示/非表示（定規からドラッグでガイド作成）">📏 定規</button>
+            <div style="width: 1px; height: 20px; background: #666; margin: 0 5px;"></div>
+            <button onclick="playPreview()" style="background: #27ae60; border: none; font-size: 14px; padding: 4px 12px; margin: 0; width: auto; font-weight:bold; border-radius: 12px; color: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3);" title="プレビュー再生">▶️ Play</button>
+        </div>
+        
+        <div id="preview-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+            <div style="width: 100%; height: 50px; background: #1e1e1e; display: flex; justify-content: center; align-items: center; box-shadow: 0 2px 15px rgba(0,0,0,0.8); z-index: 2;">
+                <span style="color: #2ecc71; font-weight: bold; margin-right: 20px; font-size: 14px;">▶️ プレビュー実行中</span>
+                <button onclick="stopPreview()" style="background: #cc4545; border: none; padding: 8px 24px; color: white; font-weight: bold; border-radius: 20px; cursor: pointer; transition: 0.2s;">■ 編集に戻る</button>
+            </div>
+            <div style="flex: 1; width: 100%; display: flex; justify-content: center; align-items: center; padding: 30px; box-sizing: border-box; overflow: hidden;">
+                <iframe id="preview-frame" style="background: #fff; border: 1px solid #444; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); transition: width 0.3s ease, height 0.3s ease;" sandbox="allow-scripts allow-same-origin"></iframe>
+            </div>
+        </div>
+
+        <!-- golden-layout のルート（ここに全ペインが描画される） -->
+        <div id="gl-root"></div>
+
+        <!-- 各パネルの中身の供給元（非表示）。golden-layoutが各ペインへ移植する -->
+        <div id="panel-source" style="display: none;">
+
+        <!-- キャンバスエリア -->
+        <div id="canvas-area">
+            <div id="canvas-wrapper">
+                <div id="canvas-container"></div>
+            </div>
+        </div>
+
+        <!-- ツールパネル -->
+<div class="floating-panel" id="panel-tools" style="top: 20px; left: 20px; width: 160px;">
+            <div class="panel-header">ツール</div>
+            <div class="panel-content">
+                <button onclick="spawnElement('Button')">＋ ボタン</button>
+                <button onclick="spawnElement('TextInput')">＋ 入力欄</button>
+                <button onclick="spawnElement('Label')">＋ テキスト</button>
+                <button onclick="spawnElement('Rect')">＋ 図形(四角)</button>
+                <button onclick="spawnElement('Circle')">＋ 図形(丸)</button>
+                <button onclick="spawnElement('Triangle')">＋ 図形(三角)</button>
+                
+                <hr style="border-color:#444; margin:10px 0;">
+                <div style="font-size:11px; color:#aaa; margin-bottom:5px; font-weight:bold;">テンプレート</div>
+                <button onclick="spawnComponent('Hero')" style="background-color: #2d3436;">Hero (見出し)</button>
+                <button onclick="spawnComponent('Card')" style="background-color: #2d3436;">Card (カード)</button>
+                <button onclick="spawnComponent('FAQ')" style="background-color: #2d3436;">FAQ (Q&amp;A)</button>
+                <button onclick="spawnComponent('Slider')" style="background-color: #0984e3; margin-top:5px;">Slider (スライダー)</button>
+                <button onclick="spawnComponent('ArticleGrid')" style="background-color: #27ae60;">ArticleGrid (記事一覧)</button>
+                <button onclick="spawnComponent('Accordion')" style="background-color: #8e44ad;">Accordion (開閉Q&amp;A)</button>
+                <hr style="border-color:#444; margin:10px 0;">
+                <div style="font-size:10px; color:#aaa; text-align:center; margin-bottom:10px;">
+                    画像はPCから直接<br>ドラッグ＆ドロップ！
+                </div>
+                <button class="btn-danger" onclick="exportStatic()">🌐 静的サイト出力</button>
+                <button class="btn-action" onclick="exportLaravel()" style="margin-top:6px;">⚙️ Laravel出力</button>
+            </div>
+        </div>
+
+        <!-- ページパネル -->
+        <div class="floating-panel" id="panel-pages" style="top: 290px; left: 20px; width: 220px;">
+            <div class="panel-header">ページ</div>
+            <div class="panel-content" style="padding: 8px;">
+                <div id="page-list"></div>
+                <button class="btn-success" onclick="addPage()" style="margin-top:6px;">＋ ページを追加</button>
+                <button class="btn-action" onclick="addPageFolder()" style="margin-top:4px;">📁 フォルダを追加</button>
+            </div>
+        </div>
+
+        <!-- エクスプローラーパネル -->
+        <div class="floating-panel" id="panel-explorer" style="top: 470px; left: 20px; width: 220px; height: 280px;">
+            <div class="panel-header">エクスプローラー</div>
+            <div class="panel-content" id="layer-list" style="padding: 5px;"></div>
+            <div class="panel-content" style="padding: 5px; border-top: 1px solid #444; flex: 0 0 auto;">
+                <button class="btn-action" onclick="createEmptyFolder()" style="margin-bottom:5px;">📁 フォルダを追加</button>
+                <p style="font-size:10px; color:#aaa; margin:0 0 2px 0;">Ctrl+C/V: コピペ | Ctrl+Z: 戻る</p>
+                <p style="font-size:10px; color:#aaa; margin:0;">複数選択→プロパティで📁グループ化</p>
+            </div>
+        </div>
+
+        <!-- キャンバス設定パネル -->
+        <div class="floating-panel" id="panel-canvas" style="top: 20px; right: 20px; width: 280px;">
+            <div class="panel-header">プロジェクト設定</div>
+            <div class="panel-content">
+                <div class="form-group">
+                    <label>プロジェクト名（出力フォルダ名）</label>
+                    <input type="text" id="project-name" value="my-site" onchange="onProjectNameChange()">
+                </div>
+                <div class="form-group">
+                    <label>出力タイプ</label>
+                    <select id="output-type" onchange="onOutputTypeChange()">
+                        <option value="static">静的サイト（HTML）</option>
+                        <option value="laravel">Laravel（Blade）</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="checkbox" id="separate-css" onchange="updateSeparateCss()" style="width:auto; margin:0;">
+                        CSSを別ファイルに出力する
+                    </label>
+                    <div style="font-size:10px; color:#888; margin-top:2px;">既定でON。HTMLに埋め込まず css/ フォルダへ書き出します</div>
+                </div>
+                <hr style="border-color:#444; margin:10px 0;">
+                <div style="font-size:11px; color:#aaa; margin-bottom:4px; font-weight:bold;">🎨 背景色</div>
+                <div class="row">
+                    <div class="form-group">
+                        <label>サイト全体</label>
+                        <input type="hidden" id="site-bg-color" value="#f1f2f6" onchange="updateSiteBgColor()"><button type="button" class="color-field" data-noalpha data-for="site-bg-color"></button>
+                    </div>
+                    <div class="form-group">
+                        <label>このページ</label>
+                        <div style="display:flex; gap:4px; align-items:flex-start;">
+                            <input type="hidden" id="page-bg-color" value="#f1f2f6" onchange="updatePageBgColor()"><button type="button" class="color-field" data-noalpha data-for="page-bg-color"></button>
+                            <button type="button" onclick="clearPageBgColor()" title="ページ個別指定を解除（サイト全体に従う）" style="width:auto; flex:none; margin:0; padding:0 8px; height:26px; box-sizing:border-box; line-height:1; font-size:11px; background:#555;">解除</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="page-bg-status" style="font-size:10px; color:#888; margin-bottom:6px;"></div>
+                <hr style="border-color:#444; margin:10px 0;">
+                <div style="font-size:11px; color:#aaa; margin-bottom:4px; font-weight:bold;">🔍 SEO（検索・SNS表示）</div>
+                <div class="form-group">
+                    <label>サイト名（共通・タイトル末尾に付与）</label>
+                    <input type="text" id="seo-site-name" placeholder="例: 〇〇商店" onchange="updateSiteSeo()">
+                </div>
+                <div class="row">
+                    <div class="form-group">
+                        <label>言語(lang)</label>
+                        <input type="text" id="seo-lang" value="ja" onchange="updateSiteSeo()">
+                    </div>
+                    <div class="form-group">
+                        <label>既定OG画像URL（共通）</label>
+                        <input type="text" id="seo-og-image" placeholder="https://.../ogp.png" onchange="updateSiteSeo()">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>既定の説明文（共通・各ページ未設定時）</label>
+                    <input type="text" id="seo-description" placeholder="サイト全体の説明" onchange="updateSiteSeo()">
+                </div>
+                <div style="font-size:10px; color:#888; margin:6px 0 4px;">― このページ個別（空欄なら上の共通値を使用）―</div>
+                <div class="form-group">
+                    <label>ページタイトル</label>
+                    <input type="text" id="seo-page-title" placeholder="（空欄＝ページ名を使用）" onchange="updatePageSeo()">
+                </div>
+                <div class="form-group">
+                    <label>ページ説明文</label>
+                    <input type="text" id="seo-page-description" placeholder="このページの説明" onchange="updatePageSeo()">
+                </div>
+                <div class="form-group">
+                    <label>ページOG画像URL</label>
+                    <input type="text" id="seo-page-og-image" placeholder="https://.../page-ogp.png" onchange="updatePageSeo()">
+                </div>
+                <hr style="border-color:#444; margin:10px 0;">
+                <div style="font-size:11px; color:#aaa; margin-bottom:4px; font-weight:bold;">💻 PC サイズ</div>
+                <div class="row">
+                    <div class="form-group">
+                        <label>幅 (px)</label>
+                        <input type="number" id="canvas-width" value="800" onchange="updateCanvasSize()">
+                    </div>
+                    <div class="form-group">
+                        <label>高さ (px)</label>
+                        <input type="number" id="canvas-height" value="600" onchange="updateCanvasSize()">
+                    </div>
+                </div>
+                <div style="font-size:11px; color:#aaa; margin-bottom:4px; font-weight:bold;">📱 スマホ サイズ</div>
+                <div class="row">
+                    <div class="form-group">
+                        <label>幅 (px)</label>
+                        <input type="number" id="canvas-mobile-width" value="375" onchange="updateCanvasSize()">
+                    </div>
+                    <div class="form-group">
+                        <label>高さ (px)</label>
+                        <input type="number" id="canvas-mobile-height" value="800" onchange="updateCanvasSize()">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>表示ズーム倍率 (%)</label>
+                    <input type="number" id="canvas-zoom" value="100" step="10" onchange="updateCanvasSize()">
+                </div>
+                <hr style="border-color:#444; margin:10px 0;">
+                <div class="row">
+                    <div class="form-group">
+                        <button class="btn-action" onclick="saveAndExport()">💾 上書き保存 (Ctrl+S)</button>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn-action" onclick="importJSON()">📂 読込</button>
+                    </div>
+                </div>
+                <button class="btn-action" onclick="newProject()" style="margin-top:4px;">🆕 新規プロジェクト</button>
+            </div>
+        </div>
+
+        <!-- プロパティパネル -->
+        <div class="floating-panel" id="panel-inspector" style="top: 220px; right: 20px; width: 280px; height: 520px;">
+            <div class="panel-header">プロパティ</div>
+
+            <div class="panel-content" id="ins-fields" style="display: none;">
+
+                <!-- 単一選択時 -->
+                <div id="ins-fields-single">    
+                    <div class="form-group">
+                        <label>レイヤー名</label>
+                        <input type="text" id="ins-name" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                    </div>
+                    <div class="row">
+                        <div class="form-group">
+                            <label>X座標</label>
+                            <input type="number" id="ins-x" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                        </div>
+                        <div class="form-group">
+                            <label>Y座標</label>
+                            <input type="number" id="ins-y" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="form-group">
+                            <label>幅 (W)</label>
+                            <input type="number" id="ins-w" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                        </div>
+                        <div class="form-group">
+                            <label>高さ (H)</label>
+                            <input type="number" id="ins-h" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                        </div>
+                    </div>
+                    <hr style="border-color:#444; margin:10px 0;">
+                    <div class="row">
+                        <div class="form-group">
+                            <label>シャドウ (影)</label>
+                            <select id="ins-shadow" onchange="onInspectorUpdate(true)">
+                                <option value="none">なし</option>
+                                <option value="light">薄め</option>
+                                <option value="dark">濃いめ</option>
+                                <option value="hard">硬め（くっきり）</option>
+                                <option value="diagonal">斜め</option>
+                                <option value="float">浮遊（大きめ）</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>アニメーション</label>
+                            <select id="ins-animation" onchange="onInspectorUpdate(true)">
+                                <option value="none">なし</option>
+                                <option value="fadein">フェードイン</option>
+                                <option value="fadeup">下からフワッと</option>
+                                <option value="scale">拡大表示</option>
+                                <option value="slideleft">右からスライド</option>
+                                <option value="slideright">左からスライド</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="group-dropshadow" style="margin-top:8px; border-top:1px solid #444; padding-top:8px;">
+                        <label><input type="checkbox" id="ins-ds-on" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 🌑 ドロップシャドウ（自由設定）</label>
+                        <div id="dropshadow-fields" style="display:none; margin-top:5px;">
+                            <div class="row">
+                                <div class="form-group">
+                                    <label>X（横px）</label>
+                                    <input type="number" id="ins-ds-x" value="4" step="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                                </div>
+                                <div class="form-group">
+                                    <label>Y（縦px）</label>
+                                    <input type="number" id="ins-ds-y" value="4" step="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="form-group">
+                                    <label>ぼかし（px）</label>
+                                    <input type="number" id="ins-ds-blur" value="10" min="0" step="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                                </div>
+                                <div class="form-group">
+                                    <label>広がり（px）</label>
+                                    <input type="number" id="ins-ds-spread" value="0" step="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="form-group">
+                                    <label>影の色</label>
+                                    <input type="hidden" id="ins-ds-color" value="#000000" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-ds-color"></button>
+                                </div>
+                                <div class="form-group">
+                                    <label>不透明度</label>
+                                    <input type="range" id="ins-ds-opacity" min="0" max="1" step="0.05" value="0.35" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                                </div>
+                            </div>
+                            <div style="font-size:10px; color:#888;">テキストは「広がり」非対応（X/Y/ぼかしのみ）。上の「シャドウ(影)」プリセットより優先されます。</div>
+                        </div>
+                    </div>
+
+                    <hr style="border-color:#444; margin:10px 0;">
+                    <div class="form-group" id="group-text">
+                        <label>テキスト内容</label>
+                        <input type="text" id="ins-text" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                    </div>
+                    <div class="row">
+                        <div class="form-group">
+                            <label>背景色（透明度対応）</label>
+                            <input type="hidden" id="ins-bgcolor" value="#ffffff" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-for="ins-bgcolor"></button>
+                        </div>
+                        <div class="form-group">
+                            <label>文字色（透明度対応）</label>
+                            <input type="hidden" id="ins-color" value="#000000" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-for="ins-color"></button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>不透明度（透明度）</label>
+                        <input type="range" id="ins-opacity" min="0" max="1" step="0.05" value="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                    </div>
+
+                    <div class="form-group" id="group-corner" style="display:none;">
+                        <label>角の丸み（px）</label>
+                        <input type="range" id="ins-corner" min="0" max="150" step="1" value="0" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                    </div>
+
+                    <div id="group-stroke" style="display:none; border-top:1px solid #444; padding-top:8px; margin-top:6px;">
+                        <label><input type="checkbox" id="ins-stroke-on" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 🖊️ 境界線（枠線）</label>
+                        <div id="stroke-fields" style="display:none; margin-top:5px;">
+                            <div class="row">
+                                <div class="form-group">
+                                    <label>太さ（px）</label>
+                                    <input type="number" id="ins-stroke-width" min="0" max="50" step="1" value="2" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                                </div>
+                                <div class="form-group">
+                                    <label>線の色</label>
+                                    <input type="hidden" id="ins-stroke-color" value="#000000" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-for="ins-stroke-color"></button>
+                                </div>
+                            </div>
+                            <div style="font-size:10px; color:#888;">テキストは文字の縁取り（-webkit-text-stroke）になります</div>
+                        </div>
+                    </div>
+
+                    <div id="group-gradient" style="display:none; border-top:1px solid #444; padding-top:8px; margin-top:6px;">
+                        <label><input type="checkbox" id="ins-grad-on" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 🎨 グラデーション</label>
+                        <div id="grad-fields" style="display:none; margin-top:5px;">
+                            <div class="row">
+                                <div class="form-group">
+                                    <label>種類</label>
+                                    <select id="ins-grad-type" onchange="onInspectorUpdate(true)">
+                                        <option value="linear">線形</option>
+                                        <option value="radial">放射状（中央→端）</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" id="grad-dir-wrap">
+                                    <label>方向</label>
+                                    <select id="ins-grad-dir" onchange="onInspectorUpdate(true)">
+                                        <option value="v">上 → 下</option>
+                                        <option value="h">左 → 右</option>
+                                        <option value="d1">左上 → 右下</option>
+                                        <option value="d2">右上 → 左下</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="form-group">
+                                    <label>色1（開始 / 中央）</label>
+                                    <input type="hidden" id="ins-grad-c1" value="#4facfe" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-for="ins-grad-c1"></button>
+                                </div>
+                                <div class="form-group">
+                                    <label>色2（終了 / 端）</label>
+                                    <input type="hidden" id="ins-grad-c2" value="#00f2fe" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-for="ins-grad-c2"></button>
+                                </div>
+                            </div>
+                            <div style="font-size:10px; color:#888;">画像はグラデーションを上から重ねます（乗算）</div>
+                        </div>
+                    </div>
+<div class="form-group">
+                        <label>フォントサイズ</label>
+                        <input type="number" id="ins-fontsize" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                    </div>
+
+                    <div class="form-group" id="group-text-align" style="display: none;">
+                        <div class="row">
+                            <div class="form-group">
+                                <label>文字揃え</label>
+                                <select id="ins-align" onchange="onInspectorUpdate(true)">
+                                    <option value="left">左揃え</option>
+                                    <option value="center">中央揃え</option>
+                                    <option value="right">右揃え</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>フォント</label>
+                                <select id="ins-fontfamily" onchange="onInspectorUpdate(true)">
+                                    <optgroup label="標準">
+                                        <option value="sans-serif">ゴシック体</option>
+                                        <option value="serif">明朝体</option>
+                                        <option value="monospace">等幅フォント</option>
+                                    </optgroup>
+                                    <optgroup label="Google Fonts（日本語）">
+                                        <option value="'Noto Sans JP', sans-serif">Noto Sans JP（ゴシック）</option>
+                                        <option value="'Noto Serif JP', serif">Noto Serif JP（明朝）</option>
+                                        <option value="'M PLUS Rounded 1c', sans-serif">M PLUS Rounded 1c（丸ゴシック）</option>
+                                        <option value="'Zen Maru Gothic', sans-serif">Zen Maru Gothic（丸ゴ）</option>
+                                        <option value="'Kosugi Maru', sans-serif">Kosugi Maru（丸文字）</option>
+                                        <option value="'Sawarabi Mincho', serif">Sawarabi Mincho（明朝）</option>
+                                        <option value="'Yusei Magic', sans-serif">Yusei Magic（手書き風）</option>
+                                        <option value="'Dela Gothic One', sans-serif">Dela Gothic One（極太見出し）</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group">
+                                <label>太さ</label>
+                                <select id="ins-fontweight" onchange="onInspectorUpdate(true)">
+                                    <option value="normal">標準</option>
+                                    <option value="bold">太字</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>スタイル</label>
+                                <div style="display:flex; gap:10px; align-items:center; padding-top:4px;">
+                                    <label style="margin:0;"><input type="checkbox" id="ins-italic" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:3px;"><i>斜体</i></label>
+                                    <label style="margin:0;"><input type="checkbox" id="ins-underline" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:3px;"><u>下線</u></label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group">
+                                <label>字間（px）</label>
+                                <input type="number" id="ins-letterspacing" value="0" step="0.5" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                            </div>
+                            <div class="form-group">
+                                <label>行間（倍）</label>
+                                <input type="number" id="ins-lineheight" value="1.2" min="0.5" step="0.1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="group-btn-bgimage" style="display: none; margin-top: 10px;">
+                        <label>ボタン背景画像</label>
+                        <div class="row" style="align-items: center; margin-bottom: 5px;">
+                            <span id="ins-bgimage-preview" style="color: #aaa; font-size: 11px;">なし</span>
+                            <div class="row" style="gap: 4px; width: 60%;">
+                                <button type="button" class="btn-action" onclick="changeButtonBgImage()" style="margin:0;">🖼️ 選択</button>
+                                <button type="button" class="btn-action" onclick="clearButtonBgImage()" style="margin:0; background-color:#cc4545;">✕ 解除</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ▼ スライダー専用設定 ▼ -->
+                    <div id="group-slider" style="display: none; margin-top: 10px; border-top: 1px solid #444; padding-top: 10px;">
+                        <div style="font-weight:bold; font-size:11px; color:#aaa; margin-bottom:6px;">🖼️ スライダー設定</div>
+
+                        <button type="button" id="btn-open-slider-editor" class="btn-primary" onclick="openSliderEditor()" style="margin-bottom:8px;">
+                            📋 スライド一覧を編集
+                        </button>
+
+                        <div class="row">
+                            <div class="form-group">
+                                <label>切替効果</label>
+                                <select id="ins-slider-effect" onchange="onInspectorUpdate(true)">
+                                    <option value="slide">スライド</option>
+                                    <option value="fade">フェード</option>
+                                    <option value="cube">キューブ</option>
+                                    <option value="coverflow">カバーフロー</option>
+                                    <option value="cards">カード</option>
+                                    <option value="grid">グリッド(複数枚)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>表示枚数</label>
+                                <input type="number" id="ins-slider-perview" value="1" min="1" max="6" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>切替速度 (ms)</label>
+                            <input type="number" id="ins-slider-speed" value="600" min="100" step="100" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                        </div>
+
+                        <div class="row">
+                            <div class="form-group">
+                                <label><input type="checkbox" id="ins-slider-autoplay" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 自動再生</label>
+                            </div>
+                            <div class="form-group">
+                                <label>間隔 (ms)</label>
+                                <input type="number" id="ins-slider-delay" value="3000" min="500" step="500" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="form-group">
+                                <label><input type="checkbox" id="ins-slider-loop" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> ループ再生</label>
+                            </div>
+                            <div class="form-group">
+                                <label><input type="checkbox" id="ins-slider-pagination" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> ドット表示</label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label><input type="checkbox" id="ins-slider-navigation" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 左右ナビ矢印を表示</label>
+                        </div>
+                    </div>
+                    <!-- ▲ スライダー専用設定 ▲ -->
+
+                    <!-- ▼ 記事グリッド専用設定 ▼ -->
+                    <div id="group-grid" style="display: none; margin-top: 10px; border-top: 1px solid #444; padding-top: 10px;">
+                        <div style="font-weight:bold; font-size:11px; color:#aaa; margin-bottom:6px;">📰 記事グリッド設定</div>
+
+                        <button type="button" id="btn-open-grid-editor" class="btn-primary" onclick="openGridEditor()" style="margin-bottom:8px;">
+                            📋 アイテム一覧を編集
+                        </button>
+
+                        <div class="row">
+                            <div class="form-group">
+                                <label>カラム数</label>
+                                <input type="number" id="ins-grid-columns" value="3" min="1" max="6" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                            </div>
+                            <div class="form-group">
+                                <label>余白 (px)</label>
+                                <input type="number" id="ins-grid-gap" value="20" min="0" step="5" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="form-group">
+                                <label>カード角丸 (px)</label>
+                                <input type="number" id="ins-grid-radius" value="8" min="0" step="2" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                            </div>
+                            <div class="form-group">
+                                <label>矢印ボタン色</label>
+                                <input type="hidden" id="ins-grid-arrow" value="#27ae60" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-grid-arrow"></button>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="form-group">
+                                <label>画像の高さ比率</label>
+                                <select id="ins-grid-imgratio" onchange="onInspectorUpdate(true)">
+                                    <option value="16/10">横長 (16:10)</option>
+                                    <option value="4/3">標準 (4:3)</option>
+                                    <option value="1/1">正方形 (1:1)</option>
+                                    <option value="3/4">縦長 (3:4)</option>
+                                    <option value="21/9">ワイド (21:9)</option>
+                                    <option value="none">画像なし/可変</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>カード内余白 (px)</label>
+                                <input type="number" id="ins-grid-padding" value="18" min="0" step="2" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="border-top:1px solid #444; padding-top:8px; margin-top:8px;">
+                            <label><input type="checkbox" id="ins-grid-slidermode" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 🎠 スライダーモード（横スクロール）</label>
+                        </div>
+                        <div id="group-grid-slider" style="display:none; padding-left:8px; border-left:2px solid #0984e3;">
+                            <div class="row">
+                                <div class="form-group">
+                                    <label><input type="checkbox" id="ins-grid-autoplay" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 自動再生</label>
+                                </div>
+                                <div class="form-group">
+                                    <label>間隔 (ms)</label>
+                                    <input type="number" id="ins-grid-delay" value="3000" min="500" step="500" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="form-group">
+                                    <label><input type="checkbox" id="ins-grid-loop" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> ループ</label>
+                                </div>
+                                <div class="form-group">
+                                    <label><input type="checkbox" id="ins-grid-nav" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 矢印ナビ</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- ▲ 記事グリッド専用設定 ▲ -->
+
+                    <!-- ▼ アコーディオン専用設定 ▼ -->
+                    <div id="group-accordion" style="display: none; margin-top: 10px; border-top: 1px solid #444; padding-top: 10px;">
+                        <div style="font-weight:bold; font-size:11px; color:#aaa; margin-bottom:6px;">🪗 アコーディオン設定</div>
+
+                        <button type="button" id="btn-open-accordion-editor" class="btn-primary" onclick="openAccordionEditor()" style="margin-bottom:8px;">
+                            📋 項目一覧を編集
+                        </button>
+
+                        <div class="row">
+                            <div class="form-group">
+                                <label>見出し文字色</label>
+                                <input type="hidden" id="ins-acc-headercolor" value="#2c3e50" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-acc-headercolor"></button>
+                            </div>
+                            <div class="form-group">
+                                <label>見出し背景色</label>
+                                <input type="hidden" id="ins-acc-headerbg" value="#f7f9fa" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-acc-headerbg"></button>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group">
+                                <label>本文文字色</label>
+                                <input type="hidden" id="ins-acc-bodycolor" value="#555555" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-acc-bodycolor"></button>
+                            </div>
+                            <div class="form-group">
+                                <label><input type="checkbox" id="ins-acc-openfirst" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 最初を開いた状態に</label>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- ▲ アコーディオン専用設定 ▲ -->
+
+                    <!-- ▼ ボタンの役割（リンク / フォーム送信ボタン）▼ -->
+                    <div class="form-group" id="group-btn-role" style="display:none; margin-top:10px;">
+                        <label>ボタンの役割</label>
+                        <select id="ins-btn-role" onchange="onInspectorUpdate(true)">
+                            <option value="link">リンク（ページ遷移）</option>
+                            <option value="submit">送信ボタン（フォーム送信）</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="group-success-msg" style="display:none;">
+                        <label>送信完了メッセージ</label>
+                        <input type="text" id="ins-success-message" placeholder="送信ありがとうございました。" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                        <div style="font-size:10px; color:#888; margin-top:2px;">空欄にすると送信先ページへそのまま遷移します</div>
+                    </div>
+                    <!-- ▲ ボタンの役割 ▲ -->
+
+                    <!-- ▼ 入力欄（フォーム項目）設定 ▼ -->
+                    <div id="group-input" style="display:none; margin-top:10px; border-top:1px solid #444; padding-top:10px;">
+                        <div style="font-weight:bold; font-size:11px; color:#aaa; margin-bottom:6px;">📝 入力欄（フォーム項目）</div>
+                        <div class="form-group">
+                            <label>項目名（name属性 / 送信キー）</label>
+                            <input type="text" id="ins-input-name" placeholder="例: email, name, message" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)">
+                        </div>
+                        <div class="row">
+                            <div class="form-group">
+                                <label>入力タイプ</label>
+                                <select id="ins-input-type" onchange="onInspectorUpdate(true)">
+                                    <option value="text">テキスト</option>
+                                    <option value="email">メール</option>
+                                    <option value="tel">電話番号</option>
+                                    <option value="number">数値</option>
+                                    <option value="textarea">複数行（テキストエリア）</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label><input type="checkbox" id="ins-input-required" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 必須</label>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- ▲ 入力欄（フォーム項目）設定 ▲ -->
+
+                    <hr style="border-color:#444; margin:10px 0;">
+                    <div class="form-group" id="group-backend">
+                        <label id="ins-route-label">リンク先URL（Googleフォーム等）</label>
+                        <input type="text" id="ins-route" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)" placeholder="https://forms.gle/...">
+                        <label style="margin-top:5px;">送信メソッド（送信ボタン / Laravel出力時）</label>
+                        <select id="ins-method" onchange="onInspectorUpdate(true)">
+                            <option value="POST">POST</option>
+                            <option value="GET">GET</option>
+                        </select>
+                    </div>
+                    <hr style="border-color:#444; margin:10px 0;">
+                    <div style="font-size:11px; color:#aaa; margin-bottom:5px; font-weight:bold;">⚡ インタラクション (イベント)</div>
+                    <div id="ins-events-list" style="margin-bottom: 5px;">
+                        </div>
+                    <button class="btn-action" onclick="addEventTrigger()" style="background-color: #2b5c3e; border: none; margin-bottom: 10px;">
+                        ＋ 新しいイベントを追加
+                    </button>
+                    <hr style="border-color:#444; margin:10px 0;">
+                    <button id="btn-ungroup" class="btn-primary"
+                        style="display:none; background-color:#e67e22; border:none;"
+                        onclick="ungroupNodes()">
+                        📂 フォルダ解除
+                    </button>
+                    <button id="btn-warp" class="btn-primary"
+                        style="display:none; background-color:#9b59b6; border:none; margin-top:5px;"
+                        onclick="toggleWarpMode()">
+                        🔷 自由変形 (オン/オフ)
+                    </button>
+                </div>
+
+                <!-- 複数選択時 -->
+                <div id="ins-fields-multi" style="display:none;">
+                    <p style="color:#aaa; font-size:11px; text-align:center; margin-bottom: 10px;">複数要素が選択されています</p>
+                    <button class="btn-success" onclick="groupNodes()" style="margin-bottom:15px;">📁 フォルダ化 (グループ化)</button>
+                    
+                    <hr style="border-color:#444; margin:10px 0;">
+                    <div style="font-size:11px; color:#aaa; margin-bottom:5px; font-weight:bold;">📐 要素の整列</div>
+                    <div class="row" style="margin-bottom: 5px;">
+                        <button class="btn-action" onclick="alignNodes('left')">⬅️ 左揃え</button>
+                        <button class="btn-action" onclick="alignNodes('center')">↕️ 中央揃え(垂直)</button>
+                        <button class="btn-action" onclick="alignNodes('right')">➡️ 右揃え</button>
+                    </div>
+                    <div class="row">
+                        <button class="btn-action" onclick="alignNodes('top')">⬆️ 上揃え</button>
+                        <button class="btn-action" onclick="alignNodes('middle')">↔️ 中央揃え(水平)</button>
+                        <button class="btn-action" onclick="alignNodes('bottom')">⬇️ 下揃え</button>
+                    </div>
+
+                    <hr style="border-color:#444; margin:10px 0;">
+                    <div style="font-size:11px; color:#aaa; margin-bottom:5px; font-weight:bold;">↔️ 等間隔に配置</div>
+                    <div class="form-group">
+                        <label>要素どうしの間隔 (px)</label>
+                        <input type="number" id="ins-multi-gap" value="20" min="0" step="5">
+                    </div>
+                    <div class="row">
+                        <button class="btn-action" onclick="distributeNodes('x')">➡️ 横に等間隔</button>
+                        <button class="btn-action" onclick="distributeNodes('y')">⬇️ 縦に等間隔</button>
+                    </div>
+                </div>
+                <button class="btn-primary"
+                    style="background-color:#cc4545; border:none; margin-top:10px;"
+                    onclick="deleteSelectedNode()">
+                    🗑️ 要素を削除
+                </button>
+            </div>
+
+            <div class="panel-content" id="ins-empty" style="text-align: center; color: #888;">
+                要素を選択してください
+            </div>
+        </div>
+
+        </div><!-- /#panel-source -->
+
+    </div>
+    <!-- C#(Photino)ホスト用ブリッジ: window.electronAPI とメニューを提供（唯一の追加行 / the only added line） -->
+    <script src="host-bridge.js"></script>
+    <script type="module" src="app/main-renderer.js"></script>
+    <!-- ▼ スライド/アイテム編集モーダル（Slider/ArticleGrid共用） ▼ -->
+    <div id="slider-editor-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:99998; align-items:center; justify-content:center;">
+        <div style="background:#252526; border:1px solid #444; border-radius:8px; width:720px; max-width:90vw; max-height:85vh; display:flex; flex-direction:column;">
+            <div style="padding:12px 16px; background:#1e1e1e; border-bottom:1px solid #444; display:flex; justify-content:space-between; align-items:center; border-radius:8px 8px 0 0;">
+                <span id="slider-editor-title" style="font-weight:bold; color:#fff;">📋 アイテム一覧の編集</span>
+                <button onclick="closeSliderEditor()" style="width:auto; margin:0; padding:4px 10px; background:#444;">閉じる</button>
+            </div>
+            <div id="slider-editor-list" style="padding:12px 16px; overflow-y:auto; flex:1;"></div>
+            <div style="padding:10px 16px; border-top:1px solid #444; display:flex; gap:8px;">
+                <button onclick="addNewSlide()" class="btn-success" style="width:auto; margin:0;">＋ アイテムを追加</button>
+                <span id="slider-editor-hint" style="color:#888; font-size:11px; align-self:center; margin-left:10px;">画像枠にファイルをドラッグ＆ドロップしても追加できます</span>
+            </div>
+        </div>
+    </div>
+    <!-- ▲ スライド/アイテム編集モーダル ▲ -->
+
+    <!-- ▼ アコーディオン項目編集モーダル ▼ -->
+    <div id="accordion-editor-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:99998; align-items:center; justify-content:center;">
+        <div style="background:#252526; border:1px solid #444; border-radius:8px; width:640px; max-width:90vw; max-height:85vh; display:flex; flex-direction:column;">
+            <div style="padding:12px 16px; background:#1e1e1e; border-bottom:1px solid #444; display:flex; justify-content:space-between; align-items:center; border-radius:8px 8px 0 0;">
+                <span style="font-weight:bold; color:#fff;">📋 アコーディオン項目の編集</span>
+                <button onclick="closeAccordionEditor()" style="width:auto; margin:0; padding:4px 10px; background:#444;">閉じる</button>
+            </div>
+            <div id="accordion-editor-list" style="padding:12px 16px; overflow-y:auto; flex:1;"></div>
+            <div style="padding:10px 16px; border-top:1px solid #444;">
+                <button onclick="addAccordionItem()" class="btn-success" style="width:auto; margin:0;">＋ 項目を追加</button>
+            </div>
+        </div>
+    </div>
+    <!-- ▲ アコーディオン項目編集モーダル ▲ -->
+
+    <!-- ▼ 右クリック コンテキストメニュー ▼ -->
+    <style>
+        /* Pickr の色ポップアップを最前面に（レイヤースタイル ダイアログ等より上に出す） */
+        .pcr-app { z-index: 2147483000 !important; }
+        #context-menu { position:fixed; z-index:99999; display:none; background:#252526; border:1px solid #555;
+            border-radius:6px; padding:4px; min-width:184px; box-shadow:0 6px 20px rgba(0,0,0,0.5); font-size:13px; }
+        #context-menu .ctx-item { padding:6px 12px; color:#ddd; cursor:pointer; border-radius:4px; white-space:nowrap; }
+        #context-menu .ctx-item:hover { background:#0a84ff; color:#fff; }
+        #context-menu .ctx-sep { height:1px; background:#444; margin:4px 6px; }
+        /* レイヤースタイル・フローティングダイアログ */
+        #layer-style-dialog { position:fixed; z-index:99997; width:300px; max-height:80vh; background:#252526; border:1px solid #555;
+            border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.55); display:none; flex-direction:column; font-size:12px; color:#ddd; }
+        #layer-style-dialog .ls-header { padding:9px 12px; background:#1e1e1e; border-bottom:1px solid #444; border-radius:8px 8px 0 0;
+            display:flex; justify-content:space-between; align-items:center; cursor:move; user-select:none; }
+        #layer-style-dialog .ls-body { padding:10px 12px; overflow-y:auto; flex:1; }
+        #layer-style-dialog .ls-section { border-top:1px solid #3a3a3a; padding-top:8px; margin-top:8px; }
+        #layer-style-dialog .ls-section:first-child { border-top:none; padding-top:0; margin-top:0; }
+        #layer-style-dialog .ls-hint { font-size:10px; color:#888; margin-top:4px; }
+        #layer-style-dialog .ls-empty { color:#888; font-size:12px; padding:16px 4px; text-align:center; }
+    </style>
+    <div id="context-menu">
+        <div id="menu-layerstyle" class="ctx-item">🎨 レイヤースタイル…</div>
+        <div class="ctx-sep"></div>
+        <div id="menu-bring-front" class="ctx-item">⬆️ 最前面へ</div>
+        <div id="menu-send-back" class="ctx-item">⬇️ 最背面へ</div>
+        <div class="ctx-sep"></div>
+        <div id="menu-copy" class="ctx-item">📋 コピー</div>
+        <div id="menu-paste" class="ctx-item">📄 貼り付け</div>
+        <div id="menu-delete" class="ctx-item">🗑️ 削除</div>
+        <div class="ctx-sep"></div>
+        <div id="menu-group" class="ctx-item">🔗 グループ化</div>
+        <div id="menu-ungroup" class="ctx-item">✂️ グループ解除</div>
+    </div>
+    <!-- ▲ 右クリック コンテキストメニュー ▲ -->
+
+    <!-- ▼ レイヤースタイル・フローティングダイアログ ▼ -->
+    <div id="layer-style-dialog">
+        <div class="ls-header" id="ls-header">
+            <span style="font-weight:bold; color:#fff;">🎨 レイヤースタイル</span>
+            <button type="button" id="ls-close" style="width:auto; margin:0; padding:2px 9px; background:#444; font-size:12px;">✕</button>
+        </div>
+        <div class="ls-body">
+            <div id="ls-empty" class="ls-empty">要素を選択すると<br>レイヤースタイルを編集できます。</div>
+            <div id="ls-content" style="display:none;">
+                <!-- 既存の3グループ(ドロップシャドウ/境界線/グラデーション)がここへ移設される -->
+                <div id="ls-relocate-slot"></div>
+
+                <!-- 🌈 グラデーション文字 -->
+                <div id="group-gradtext" class="ls-section" style="display:none;">
+                    <label><input type="checkbox" id="ins-gt-on" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 🌈 グラデーション文字</label>
+                    <div id="gradtext-fields" style="display:none; margin-top:5px;">
+                        <div class="row">
+                            <div class="form-group">
+                                <label>方向</label>
+                                <select id="ins-gt-dir" onchange="onInspectorUpdate(true)">
+                                    <option value="h">左 → 右</option>
+                                    <option value="v">上 → 下</option>
+                                    <option value="d1">左上 → 右下</option>
+                                    <option value="d2">右上 → 左下</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group">
+                                <label>色1（開始）</label>
+                                <input type="hidden" id="ins-gt-c1" value="#ff6ec4" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-gt-c1"></button>
+                            </div>
+                            <div class="form-group">
+                                <label>色2（終了）</label>
+                                <input type="hidden" id="ins-gt-c2" value="#7873f5" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-gt-c2"></button>
+                            </div>
+                        </div>
+                        <div class="ls-hint">文字自体にグラデーションを塗ります（テキスト／ボタン文字）。</div>
+                    </div>
+                </div>
+
+                <!-- 🌘 内側シャドウ -->
+                <div id="group-innershadow" class="ls-section" style="display:none;">
+                    <label><input type="checkbox" id="ins-is-on" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 🌘 内側シャドウ</label>
+                    <div id="innershadow-fields" style="display:none; margin-top:5px;">
+                        <div class="row">
+                            <div class="form-group"><label>X（横px）</label><input type="number" id="ins-is-x" value="0" step="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"></div>
+                            <div class="form-group"><label>Y（縦px）</label><input type="number" id="ins-is-y" value="3" step="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"></div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group"><label>ぼかし（px）</label><input type="number" id="ins-is-blur" value="6" min="0" step="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"></div>
+                            <div class="form-group"><label>不透明度</label><input type="range" id="ins-is-opacity" min="0" max="1" step="0.05" value="0.4" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"></div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group"><label>影の色</label><input type="hidden" id="ins-is-color" value="#000000" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-is-color"></button></div>
+                        </div>
+                        <div class="ls-hint">要素の内側にくぼんだ影（box-shadow inset）。図形／ボタン／画像で有効。</div>
+                    </div>
+                </div>
+
+                <!-- ✨ 光彩（グロー） -->
+                <div id="group-glow" class="ls-section" style="display:none;">
+                    <label><input type="checkbox" id="ins-glow-on" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> ✨ 光彩（グロー）</label>
+                    <div id="glow-fields" style="display:none; margin-top:5px;">
+                        <div class="row">
+                            <div class="form-group"><label>ぼかし（px）</label><input type="number" id="ins-glow-blur" value="12" min="0" step="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"></div>
+                            <div class="form-group"><label>広がり（px）</label><input type="number" id="ins-glow-spread" value="0" step="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"></div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group"><label>光の色</label><input type="hidden" id="ins-glow-color" value="#00d0ff" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-glow-color"></button></div>
+                            <div class="form-group"><label>不透明度</label><input type="range" id="ins-glow-opacity" min="0" max="1" step="0.05" value="0.8" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"></div>
+                        </div>
+                        <div class="ls-hint">外側に発光する光彩。テキストは広がり非対応（ぼかしのみ）。</div>
+                    </div>
+                </div>
+
+                <!-- 🔲 ベベル＆エンボス -->
+                <div id="group-bevel" class="ls-section" style="display:none;">
+                    <label><input type="checkbox" id="ins-bevel-on" onchange="onInspectorUpdate(true)" style="width:auto; margin-right:4px;"> 🔲 ベベル＆エンボス</label>
+                    <div id="bevel-fields" style="display:none; margin-top:5px;">
+                        <div class="row">
+                            <div class="form-group"><label>深さ（px）</label><input type="number" id="ins-bevel-depth" value="4" min="1" max="30" step="1" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"></div>
+                            <div class="form-group"><label>向き</label>
+                                <select id="ins-bevel-dir" onchange="onInspectorUpdate(true)">
+                                    <option value="up">浮き出し（凸）</option>
+                                    <option value="down">くぼみ（凹）</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group"><label>ハイライト色</label><input type="hidden" id="ins-bevel-hl" value="#ffffff" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-bevel-hl"></button></div>
+                            <div class="form-group"><label>影色</label><input type="hidden" id="ins-bevel-sh" value="#000000" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"><button type="button" class="color-field" data-noalpha data-for="ins-bevel-sh"></button></div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group"><label>強さ</label><input type="range" id="ins-bevel-opacity" min="0" max="1" step="0.05" value="0.5" oninput="onInspectorUpdate(false)" onchange="onInspectorUpdate(true)"></div>
+                        </div>
+                        <div class="ls-hint">明暗2方向の内側シャドウで立体感を演出。図形／ボタン／画像で有効。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ▲ レイヤースタイル・フローティングダイアログ ▲ -->
+</body>
+</html>

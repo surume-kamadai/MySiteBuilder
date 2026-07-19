@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Windows ではコンソール窓を出さない GUI アプリ。Photino が OS の WebView を使う。 -->
+    <!-- GUI app (no console window on Windows). Photino hosts the OS WebView. -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>SiteBuilder.Host</RootNamespace>
+    <AssemblyName>SiteBuilder</AssemblyName>
+    <!-- Photino はネイティブランタイム(WebView2 等)を同梱するため RID 指定publishが基本 -->
+    <RuntimeIdentifiers>win-x64;osx-x64;osx-arm64;linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Electron の代替となる純.NET ホスト。Win: WebView2 / Mac: WKWebView -->
+    <PackageReference Include="Photino.NET" Version="3.1.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- renderer 一式（src/renderer からの無改変コピー ＋ host-bridge.js）を出力にコピー -->
+    <!-- Copy the renderer bundle (verbatim copy of src/renderer + host-bridge.js) to output. -->
+    <Content Include="wwwroot/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
