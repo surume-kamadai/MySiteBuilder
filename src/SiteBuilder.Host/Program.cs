@@ -17,6 +17,7 @@ internal static class Program
     private static void Main(string[] args)
     {
         var isDev = args.Contains("--dev");
+        var engine = EngineModeParser.Resolve(args); // 出力エンジン選択（既定 JS）/ output engine (default JS)
 
         var window = new PhotinoWindow()
             .SetTitle("Site Builder")
@@ -32,7 +33,7 @@ internal static class Program
             .SetDevToolsEnabled(isDev);
 
         // ブリッジ 7API のルーティング（export/pick-image/save-scene/load-scene ...）。
-        var dispatcher = new BridgeDispatcher(window);
+        var dispatcher = new BridgeDispatcher(window, engine);
         window.RegisterWebMessageReceivedHandler(dispatcher.Handle);
 
         // renderer 一式は wwwroot に無改変配置。相対パス/ESモジュール/vendor もそのまま解決される。

@@ -19,6 +19,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 出力エンジン（Step 2 で移植した純ロジック）。C#/シャドウ生成に使う。 -->
+    <!-- The ported output engine (Step 2). Used for C#/shadow generation. -->
+    <ProjectReference Include="../SiteBuilder.Core/SiteBuilder.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- renderer 一式（src/renderer からの無改変コピー ＋ host-bridge.js）を出力にコピー -->
     <!-- Copy the renderer bundle (verbatim copy of src/renderer + host-bridge.js) to output. -->
     <Content Include="wwwroot/**/*" CopyToOutputDirectory="PreserveNewest" />

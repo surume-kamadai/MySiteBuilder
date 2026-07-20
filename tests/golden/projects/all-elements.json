@@ -1,0 +1,182 @@
+{
+  "settings": {
+    "projectName": "全部盛りサイト",
+    "canvas": { "width": 900, "height": 700, "mobileWidth": 375, "mobileHeight": 820 },
+    "outputType": "static",
+    "siteBgColor": "#101820",
+    "separateCss": false,
+    "seo": { "siteName": "鎌代スタジオ", "lang": "ja", "description": "サイト共通の説明文です。", "ogImage": "https://example.com/site-og.png" }
+  },
+  "folders": [],
+  "pages": [
+    {
+      "id": "page_1",
+      "name": "index",
+      "folderId": null,
+      "bgColor": "#1e293b",
+      "seo": { "title": "トップ<ページ>", "description": "ページ個別の\"説明\"", "ogImage": "" },
+      "elements": [
+        {
+          "id": "lbl1", "type": "Label",
+          "transform": { "x": 40, "y": 30, "width": 400, "height": 60 },
+          "properties": {
+            "text": "見出し & <ロゴ>", "color": "#ffcc00", "fontsize": 34, "fontfamily": "Noto Sans JP",
+            "fontWeight": "bold", "align": "center", "italic": true, "underline": true,
+            "letterSpacing": 2, "lineHeight": 1.4, "shadow": "hard", "animation": "fadeUp",
+            "gradText": { "on": true, "c1": "#ff6ec4", "c2": "#7873f5", "dir": "d1" }
+          }
+        },
+        {
+          "id": "rect1", "type": "Rect",
+          "transform": { "x": 40, "y": 110, "width": 200, "height": 120 },
+          "properties": {
+            "bgcolor": "#3355ff", "cornerRadius": 12, "opacity": 0.75,
+            "gradient": { "on": true, "type": "linear", "dir": "h", "c1": "#4facfe", "c2": "#00f2fe" },
+            "stroke": { "on": true, "width": 3, "color": "#ffffff" }
+          }
+        },
+        {
+          "id": "circ1", "type": "Circle",
+          "transform": { "x": 260, "y": 110, "width": 120, "height": 120 },
+          "properties": {
+            "bgcolor": "#e91e63",
+            "dropShadow": { "on": true, "x": 4, "y": 6, "blur": 12, "spread": 1, "color": "#220033", "opacity": 0.5 },
+            "glow": { "on": true, "blur": 20, "spread": 2, "color": "#00d0ff", "opacity": 0.8 }
+          }
+        },
+        {
+          "id": "tri1", "type": "Triangle",
+          "transform": { "x": 400, "y": 110, "width": 120, "height": 120 },
+          "properties": { "gradient": { "on": true, "type": "radial", "c1": "#f7971e", "c2": "#ffd200" } }
+        },
+        {
+          "id": "warp1", "type": "Warp",
+          "transform": { "x": 540, "y": 110, "width": 160, "height": 120 },
+          "properties": {
+            "bgcolor": "#22c55e",
+            "warpPoints": [ { "x": 10, "y": 0 }, { "x": 160, "y": 30 }, { "x": 120, "y": 120 }, { "x": 0, "y": 90 } ],
+            "innerShadow": { "on": true, "x": 2, "y": 2, "blur": 6, "color": "#003300", "opacity": 0.4 }
+          }
+        },
+        {
+          "id": "img1", "type": "Image",
+          "transform": { "x": 40, "y": 250, "width": 220, "height": 140 },
+          "properties": {
+            "text": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+            "name": "写真A", "route": "about.html", "cornerRadius": 8,
+            "gradient": { "on": true, "type": "linear", "dir": "v", "c1": "#000000", "c2": "#ffffff" }
+          }
+        },
+        {
+          "id": "img2", "type": "Image",
+          "transform": { "x": 280, "y": 250, "width": 220, "height": 140 },
+          "properties": { "text": "data:image/jpeg;base64,/9j/4AAQSkZJRg==", "name": "写真B", "route": "#" }
+        },
+        {
+          "id": "btnlink", "type": "Button",
+          "transform": { "x": 520, "y": 250, "width": 160, "height": 50 },
+          "properties": {
+            "text": "詳しく見る", "role": "link", "route": "https://example.com/more",
+            "bgcolor": "#0ea5e9", "color": "#ffffff", "cornerRadius": 10, "fontWeight": "700", "align": "center",
+            "events": [ { "trigger": "hover", "action": "alert", "target": "ようこそ\"ラボ\"へ" } ]
+          }
+        },
+        {
+          "id": "ti1", "type": "TextInput",
+          "transform": { "x": 40, "y": 410, "width": 300, "height": 44 },
+          "properties": { "inputName": "email", "inputType": "email", "required": true, "text": "メール & 連絡先" }
+        },
+        {
+          "id": "ta1", "type": "TextInput",
+          "transform": { "x": 40, "y": 464, "width": 300, "height": 90 },
+          "properties": { "inputName": "message", "inputType": "textarea", "text": "本文<ここ>" }
+        },
+        {
+          "id": "btnsubmit", "type": "Button",
+          "transform": { "x": 40, "y": 564, "width": 160, "height": 50 },
+          "properties": {
+            "text": "送信する", "role": "submit", "route": "https://formspree.io/f/abc", "method": "post",
+            "successMessage": "送信<完了>しました", "bgcolor": "#16a34a", "color": "#ffffff",
+            "bevel": { "on": true, "dir": "up", "depth": 3, "highlight": "#ffffff", "shadow": "#000000", "opacity": 0.5 }
+          }
+        },
+        {
+          "id": "grp1", "type": "Group",
+          "transform": { "x": 360, "y": 410, "width": 320, "height": 200 },
+          "properties": { "bgcolor": "#0f172a" },
+          "children": [
+            {
+              "id": "grpchild1", "type": "Label",
+              "transform": { "x": 20, "y": 20, "width": 200, "height": 40 },
+              "properties": {
+                "text": "グループ内テキスト", "color": "#a3e635", "fontsize": 18, "fontfamily": "Yusei Magic",
+                "mobileEdited": true, "layouts": { "mobile": { "x": 10, "y": 10, "w": 150, "h": 30, "fontsize": 14 } }
+              }
+            },
+            {
+              "id": "grpchild2", "type": "Rect",
+              "transform": { "x": 20, "y": 80, "width": 120, "height": 80 },
+              "properties": { "bgcolor": "#f43f5e", "cornerRadius": 6, "visible": false }
+            }
+          ]
+        },
+        {
+          "id": "slider1", "type": "Slider",
+          "transform": { "x": 40, "y": 630, "width": 400, "height": 220 },
+          "properties": {
+            "slider": {
+              "effect": "coverflow", "speed": 500, "autoplay": true, "delay": 2500, "loop": true,
+              "pagination": true, "navigation": true, "slidesPerView": 1,
+              "slides": [
+                { "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==", "title": "スライド一", "text": "説明<one>", "linkType": "url", "link": "https://example.com/s1" },
+                { "image": "data:image/webp;base64,UklGRh4AAABXRUJQ", "title": "スライド二", "text": "", "linkType": "page", "link": "about.html" }
+              ]
+            }
+          }
+        },
+        {
+          "id": "grid1", "type": "ArticleGrid",
+          "transform": { "x": 460, "y": 630, "width": 400, "height": 260 },
+          "properties": {
+            "grid": {
+              "columns": 2, "gap": 16, "cardRadius": 10, "arrowColor": "#27ae60", "imgRatio": "16/10",
+              "cardPadding": 18, "sliderMode": false,
+              "items": [
+                { "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==", "title": "記事1", "text": "本文1", "linkType": "url", "link": "https://example.com/a1" },
+                { "image": "", "title": "記事2", "text": "本文2", "linkType": "none", "link": "" }
+              ]
+            }
+          }
+        },
+        {
+          "id": "grid2", "type": "ArticleGrid",
+          "transform": { "x": 40, "y": 860, "width": 820, "height": 240 },
+          "properties": {
+            "grid": {
+              "columns": 3, "gap": 20, "cardRadius": 8, "imgRatio": "none",
+              "sliderMode": true, "autoplay": true, "delay": 4000, "loop": true, "navigation": true,
+              "items": [
+                { "title": "S1", "text": "t1", "linkType": "page", "link": "index.html" },
+                { "title": "S2", "text": "t2" }
+              ]
+            }
+          }
+        },
+        {
+          "id": "acc1", "type": "Accordion",
+          "transform": { "x": 40, "y": 1110, "width": 500, "height": 200 },
+          "properties": {
+            "accordion": {
+              "headerColor": "#2c3e50", "headerBg": "#f7f9fa", "bodyColor": "#555555", "openFirst": true,
+              "items": [
+                { "title": "質問1", "content": "回答1\n改行あり" },
+                { "title": "質問2 & <em>", "content": "回答2" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "activePageId": "page_1"
+}

@@ -33,11 +33,11 @@ public sealed class BridgeDispatcher
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
 
-    public BridgeDispatcher(PhotinoWindow window)
+    public BridgeDispatcher(PhotinoWindow window, EngineMode engine)
     {
         _window = window;
         _dialogs = new DialogService(window);
-        _export = new ExportWriter(window);
+        _export = new ExportWriter(window, engine);
     }
 
     // Photino の RegisterWebMessageReceivedHandler(EventHandler<string>) に渡すハンドラ。
