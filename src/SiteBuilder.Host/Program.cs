@@ -1,5 +1,6 @@
 using Photino.NET;
 using SiteBuilder.Host.Bridge;
+using Velopack;
 
 namespace SiteBuilder.Host;
 
@@ -16,6 +17,10 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // Velopack: インストール/更新/アンインストールのフックを最優先で処理する。
+        // Velopack: handle install/update/uninstall hooks first, before anything else.
+        VelopackApp.Build().Run();
+
         var isDev = args.Contains("--dev");
         var engine = EngineModeParser.Resolve(args); // 出力エンジン選択（既定 JS）/ output engine (default JS)
 

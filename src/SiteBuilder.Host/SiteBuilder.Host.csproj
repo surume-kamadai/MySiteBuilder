@@ -16,6 +16,8 @@
   <ItemGroup>
     <!-- Electron の代替となる純.NET ホスト。Win: WebView2 / Mac: WKWebView -->
     <PackageReference Include="Photino.NET" Version="3.1.13" />
+    <!-- 配布: Win インストーラ + 自動更新 / distribution: Windows installer + auto-update. -->
+    <PackageReference Include="Velopack" Version="0.0.1053" />
   </ItemGroup>
 
   <ItemGroup>
