@@ -1,0 +1,49 @@
+# ============================================================
+# CI: SiteBuilder.Core の出力が JS 版とバイト一致することを毎回検証する。
+# CI: verify on every push/PR that SiteBuilder.Core output byte-matches the JS engine.
+# ============================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # .slnx を解釈できる .NET 9 SDK を使う（net8.0 ターゲットはそのままビルド可能）。
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restore
+        run: dotnet restore SiteBuilder.slnx
+
+      - name: Build
+        run: dotnet build SiteBuilder.slnx -c Release --no-restore
+
+      - name: Test (golden byte-match + JS compat)
+        run: dotnet test tests/SiteBuilder.Core.Tests/SiteBuilder.Core.Tests.csproj -c Release --no-build
+
+      # ゴールデンの鮮度チェック: wwwroot の JS 版から再生成し、コミット済みと差分が無いこと。
+      # Golden freshness: regenerate from the wwwroot JS engine and ensure no diff vs committed fixtures.
+      - name: Golden fixtures are up to date
+        run: |
+          node tests/golden/dump.mjs
+          if ! git diff --quiet -- tests/SiteBuilder.Core.Tests/fixtures; then
+            echo "::error::Golden fixtures are stale. Run 'node tests/golden/dump.mjs' and commit the result."
+            git --no-pager diff --stat -- tests/SiteBuilder.Core.Tests/fixtures
+            exit 1
+          fi

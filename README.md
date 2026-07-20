@@ -144,15 +144,39 @@ renderer は無改変のまま（`api.js` が保存時に `project.json` を同�
 node tests/golden/dump.mjs   # フィクスチャ再生成 → その後 dotnet test
 ```
 
+ゴールデンテストは CI（`.github/workflows/ci.yml`）で毎回実行され、フィクスチャの
+鮮度チェック（JS 版から再生成して差分ゼロ）も行われます。
+
+---
+
+## 配布（Step 3）
+
+Velopack のブートストラップを起動時に組み込み（`VelopackApp.Build().Run()`）、
+Windows/macOS 向けのパッケージングスクリプトを用意しています。
+
+```bash
+# Windows: Velopack インストーラ + 自動更新（要 dotnet tool install -g vpk）
+pwsh scripts/pack-win.ps1 -Version 1.0.0
+
+# macOS: .app → dmg（要 brew install create-dmg）
+RID=osx-arm64 bash scripts/pack-mac.sh 1.0.0
+```
+
+- Windows は Velopack が Evergreen WebView2 の導入も面倒を見ます（計画書 §8）。
+- macOS の本番配布では Apple Developer 署名 + notarize が別途必要です。
+- 実際のインストーラ生成には各 OS 実機（と WebView）が必要なため、本リポジトリでは
+  スクリプトとブートストラップの用意までを行っています。
+
 ---
 
 ## 移行計画上の位置づけ
 
 - **Step 1: 完了** — Electron 殻を C#（Photino.NET）へ置換。UI は無改変で動作し、
   Electron/Node への依存が消えた状態。
-- **Step 2（本 PR）: 完了** — 出力エンジンを `SiteBuilder.Core` へ移植し、ゴールデンテストで
+- **Step 2: 完了** — 出力エンジンを `SiteBuilder.Core` へ移植し、ゴールデンテストで
   JS 版とのバイト一致を確認。`--engine` フラグで JS/Shadow/C# を切替可能（既定は JS）。
-  シャドウ実運用で不一致ゼロを確認後、既定を C# に切り替えられます。
-- **Step 3（今後）** — Velopack（Win）/ dmg（Mac）での配布。
+- **Step 3（本 PR）: 配布の足場を用意** — Velopack ブートストラップ + Win/Mac パッケージング
+  スクリプト + CI（ゴールデンテスト自動実行）。実機での配布物生成と署名は今後。
+- **今後** — シャドウ実運用で不一致ゼロを確認後、既定エンジンを C# へ切替。実機での配布・署名。
 
 元 UI・出力エンジンの実装は `WebSitebuilder-Laravel`（`src/renderer`）を正とします。
