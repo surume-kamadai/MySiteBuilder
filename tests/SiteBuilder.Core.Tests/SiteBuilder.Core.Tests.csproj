@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/SiteBuilder.Core/SiteBuilder.Core.csproj" />
+  </ItemGroup>
+
+  <!-- ゴールデン: JS版が生成したフィクスチャと、入力プロジェクトを出力へコピー。 -->
+  <!-- Golden: copy the JS-generated fixtures and the input projects to the output dir. -->
+  <ItemGroup>
+    <Content Include="fixtures/**/*.json" LinkBase="fixtures" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../golden/projects/**/*.json" LinkBase="projects" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

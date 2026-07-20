@@ -32,16 +32,30 @@
 ```
 MySiteBuilder/
 ├─ SiteBuilder.slnx
-└─ src/SiteBuilder.Host/
-   ├─ SiteBuilder.Host.csproj      # Photino.NET / net8.0
-   ├─ Program.cs                   # ウィンドウ生成・ブリッジ配線
-   ├─ Bridge/
-   │  ├─ BridgeMessage.cs          # メッセージ/ペイロードのモデル
-   │  ├─ BridgeDispatcher.cs       # メッセージルータ（計画書 §4.2）
-   │  ├─ DialogService.cs          # フォルダ/ファイル/画像ダイアログ
-   │  └─ ExportWriter.cs           # export-project 相当 + SafeResolve（§4.2）
-   └─ wwwroot/                     # WebSitebuilder-Laravel/src/renderer の無改変コピー
-      └─ host-bridge.js            # ★唯一の追加ファイル（preload.js 代替 shim + メニュー）
+├─ src/
+│  ├─ SiteBuilder.Host/            # Photino ホスト（ウィンドウ・メニュー・ブリッジ・I/O）
+│  │  ├─ SiteBuilder.Host.csproj   # Photino.NET / net8.0
+│  │  ├─ Program.cs                # ウィンドウ生成・ブリッジ配線・エンジン選択
+│  │  ├─ Bridge/
+│  │  │  ├─ BridgeMessage.cs       # メッセージ/ペイロードのモデル
+│  │  │  ├─ BridgeDispatcher.cs    # メッセージルータ（計画書 §4.2）
+│  │  │  ├─ DialogService.cs       # フォルダ/ファイル/画像ダイアログ
+│  │  │  ├─ EngineMode.cs          # JS / Shadow / CSharp の切替（§2.7）
+│  │  │  └─ ExportWriter.cs        # export-project 相当 + SafeResolve + エンジン適用
+│  │  └─ wwwroot/                  # WebSitebuilder-Laravel/src/renderer の無改変コピー
+│  │     └─ host-bridge.js         # ★唯一の追加ファイル（preload.js 代替 shim + メニュー）
+│  └─ SiteBuilder.Core/            # ★Step 2: 出力エンジン（UI依存ゼロの純ロジック）
+│     ├─ Js.cs                     # JS 値セマンティクス互換層（?? と || / toFixed / String(number)）
+│     └─ Export/
+│        ├─ CssHelpers.cs          # ← css-generator.js
+│        ├─ ComponentRenderers.cs  # ← render-components.js
+│        ├─ HtmlRenderer.cs        # ← renderer.js
+│        └─ Exporter.cs            # ← exporter.js（buildStatic / buildLaravel）
+└─ tests/
+   ├─ golden/                      # ゴールデン入力プロジェクト + JS版ダンプ器
+   │  ├─ projects/*.json           # 代表プロジェクト（全要素/Group/Warp/フォーム/複数ページ…）
+   │  └─ dump.mjs                  # wwwroot の JS 版で期待フィクスチャを生成
+   └─ SiteBuilder.Core.Tests/      # xUnit: C# 出力が JS 版とバイト一致することを検証
 ```
 
 **renderer 本体のコードには手を入れていません。** 追加は `host-bridge.js` 1 ファイルと、
@@ -87,19 +101,58 @@ dotnet run --project src/SiteBuilder.Host -- --dev
 dotnet publish src/SiteBuilder.Host -c Release -r win-x64
 ```
 
-> 注: 本環境（CI/コンテナ）では GUI（WebView）を起動できないため、`dotnet build` による
-> コンパイル確認まで実施済みです。実機での起動・全機能の受け入れ確認は計画書 §6-1 の
-> チェックリストに従ってください。
+```bash
+# テスト（ゴールデン + JS互換層）
+dotnet test tests/SiteBuilder.Core.Tests/SiteBuilder.Core.Tests.csproj
+```
+
+> 注: `SiteBuilder.slnx` は .NET 9 以降の `dotnet` が解釈します（.NET 8 SDK 単体で使う場合は
+> 各 `.csproj` を直接ビルド/テストしてください）。本環境（CI/コンテナ）では GUI（WebView）を
+> 起動できないため、`dotnet build` + `dotnet test` によるコンパイル/出力検証まで実施済みです。
+> 実機での起動・全機能の受け入れ確認は計画書 §6-1 のチェックリストに従ってください。
+
+---
+
+## 出力エンジンの C# 化（Step 2）
+
+`WebSitebuilder-Laravel/src/renderer/export`（純ロジック 1,328 行）を `SiteBuilder.Core` へ移植しました。
+JS の値セマンティクス（`??` と `||` の違い・`toFixed`・`String(number)`・`Map`/`Set` の挿入順）まで
+再現し、**JS 版とバイト一致**することをゴールデンテストで機械検証しています。
+
+### エンジンの切替（`--engine=` / `SITEBUILDER_ENGINE`）
+
+| モード | 挙動 |
+|---|---|
+| `js`（既定） | 従来どおり renderer(JS) が生成した files をそのまま書き出す（**挙動不変**） |
+| `shadow` | JS の出力を書き出しつつ、C# エンジンの出力と毎回比較して不一致を `TEMP/sitebuilder-shadow.log` に記録（ユーザー影響ゼロで実データ検証） |
+| `csharp` | ペイロード内の `project.json` から C# エンジンで再生成した files を書き出す |
+
+```bash
+dotnet run --project src/SiteBuilder.Host -- --engine=shadow
+```
+
+renderer は無改変のまま（`api.js` が保存時に `project.json` を同梱しているため、C# 側はそれを
+入力に再生成/照合できます）。既定は `js` なので、一致確認が済むまで出力は従来と完全に同一です。
+
+### ゴールデンテスト
+
+`tests/golden/dump.mjs` が wwwroot の JS 版エンジンで期待フィクスチャを生成し、
+`SiteBuilder.Core.Tests` が C# 版の出力と**パス集合・ファイル内容をバイト比較**します。
+入力プロジェクトを増やしたら次で再生成します:
+
+```bash
+node tests/golden/dump.mjs   # フィクスチャ再生成 → その後 dotnet test
+```
 
 ---
 
 ## 移行計画上の位置づけ
 
-- **Step 1（本コミット）: 完了** — Electron 殻を C#（Photino.NET）へ置換。UI は無改変で動作し、
-  Electron/Node への依存が消えた状態。出力エンジンは引き続き renderer 内の JS 版が動くため、
-  出力結果は従来と完全に同一。
-- **Step 2（今後）** — 出力エンジン（`export/` 純ロジック）を `SiteBuilder.Core` へ移植し、
-  ゴールデンテストでバイト一致を確認のうえ既定を C# 化。
+- **Step 1: 完了** — Electron 殻を C#（Photino.NET）へ置換。UI は無改変で動作し、
+  Electron/Node への依存が消えた状態。
+- **Step 2（本 PR）: 完了** — 出力エンジンを `SiteBuilder.Core` へ移植し、ゴールデンテストで
+  JS 版とのバイト一致を確認。`--engine` フラグで JS/Shadow/C# を切替可能（既定は JS）。
+  シャドウ実運用で不一致ゼロを確認後、既定を C# に切り替えられます。
 - **Step 3（今後）** — Velopack（Win）/ dmg（Mac）での配布。
 
 元 UI・出力エンジンの実装は `WebSitebuilder-Laravel`（`src/renderer`）を正とします。

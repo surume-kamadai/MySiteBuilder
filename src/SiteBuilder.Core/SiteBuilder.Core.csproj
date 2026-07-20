@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>SiteBuilder.Core</RootNamespace>
+    <!-- UI依存ゼロの純ロジックライブラリ（renderer の export/ を移植） -->
+    <!-- Pure-logic library with no UI dependency (port of the renderer's export/). -->
+  </PropertyGroup>
+
+</Project>
